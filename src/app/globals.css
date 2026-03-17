@@ -1,0 +1,98 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@font-face {
+  font-family: "Noto Serif SC";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap");
+}
+
+:root {
+  --background: #fffdf8;
+  --foreground: #2c2c2c;
+  --bg-alt: #fff7e6;
+  --accent: #f0923b;
+  --accent-hover: #e07b20;
+  --link: #3a9d5c;
+  --link-hover: #2d8049;
+  --border: #f0e4d0;
+  --muted: #8a7e72;
+  --sidebar-bg: #fef9f0;
+  --card-bg: #ffffff;
+  --card-shadow: rgba(240, 146, 59, 0.06);
+  --nav-bg: rgba(255, 253, 248, 0.92);
+  --tag-active-bg: #f0923b;
+  --tag-active-text: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-bg-alt: var(--bg-alt);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-card-bg: var(--card-bg);
+  --color-card-shadow: var(--card-shadow);
+  --color-nav-bg: var(--nav-bg);
+  --color-tag-active-bg: var(--tag-active-bg);
+  --color-tag-active-text: var(--tag-active-text);
+  --font-sans: "Inter", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Noto Serif SC", "Georgia", ui-serif, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-alt);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Prose overrides for warm theme */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--link);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-bg: #2d2a2e;
+  --tw-prose-pre-code: #e8e0d8;
+  --tw-prose-quotes: var(--muted);
+  --tw-prose-quote-borders: var(--accent);
+}
+
+.prose a:hover {
+  color: var(--link-hover);
+}
+
+.prose code::before,
+.prose code::after {
+  content: none;
+}
+
+.prose :where(code):not(:where(pre *)) {
+  background: var(--bg-alt);
+  padding: 0.15em 0.35em;
+  border-radius: 0.25em;
+  font-size: 0.875em;
+}

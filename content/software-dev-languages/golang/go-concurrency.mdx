@@ -1,0 +1,71 @@
+---
+title: "Go 并发模型深度解析"
+date: "2026-03-10"
+summary: "从 goroutine 到 channel，理解 Go 的并发设计哲学"
+tags: ["golang", "concurrency", "goroutine", "channel"]
+category: "golang"
+domain: "software-dev-languages"
+group: "并发编程"
+draft: false
+---
+
+# Go 并发模型深度解析
+
+Go 语言的并发模型是其最具特色的设计之一。通过 goroutine 和 channel，Go 提供了一种优雅的并发编程方式。
+
+## Goroutine
+
+Goroutine 是 Go 的轻量级线程，由 Go 运行时管理。创建一个 goroutine 只需要在函数调用前加上 `go` 关键字：
+
+```go
+func main() {
+    go func() {
+        fmt.Println("Hello from goroutine")
+    }()
+    time.Sleep(time.Second)
+}
+```
+
+与操作系统线程相比，goroutine 的优势在于：
+
+- **轻量**: 初始栈只有 2KB，可以动态增长
+- **高效调度**: Go 运行时使用 M:N 调度模型
+- **低成本**: 创建和切换成本远低于系统线程
+
+## Channel
+
+Channel 是 goroutine 之间通信的管道。Go 的哲学是：
+
+> 不要通过共享内存来通信，而是通过通信来共享内存。
+
+```go
+ch := make(chan int, 10)
+
+// 发送
+go func() {
+    ch <- 42
+}()
+
+// 接收
+value := <-ch
+fmt.Println(value) // 42
+```
+
+## Select 语句
+
+`select` 语句用于在多个 channel 操作之间进行选择：
+
+```go
+select {
+case msg := <-ch1:
+    fmt.Println("Received from ch1:", msg)
+case msg := <-ch2:
+    fmt.Println("Received from ch2:", msg)
+case <-time.After(time.Second):
+    fmt.Println("Timeout")
+}
+```
+
+## 总结
+
+Go 的并发模型通过 goroutine 和 channel 提供了一种简洁而强大的并发编程范式。理解这些基础概念对于编写高效的 Go 程序至关重要。

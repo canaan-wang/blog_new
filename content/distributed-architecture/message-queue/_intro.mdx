@@ -1,0 +1,32 @@
+---
+title: "消息队列概览"
+date: "2026-01-01"
+summary: "消息队列技术选型与核心概念总览"
+tags: ["message-queue", "kafka", "rabbitmq"]
+category: "message-queue"
+domain: "distributed-architecture"
+group: ""
+draft: false
+---
+
+# 消息队列概览
+
+消息队列是分布式系统中实现异步通信、解耦和削峰的关键组件。
+
+## 常见消息队列对比
+
+| 特性     | Kafka      | RabbitMQ | RocketMQ   |
+| -------- | ---------- | -------- | ---------- |
+| 吞吐量   | 极高       | 中等     | 高         |
+| 延迟     | 毫秒级     | 微秒级   | 毫秒级     |
+| 消息模型 | 日志追加   | AMQP     | 自定义协议 |
+| 适用场景 | 大数据管道 | 业务消息 | 电商场景   |
+
+## 核心概念
+
+- **生产者 / 消费者模型**: 消息的发送与接收
+- **Topic / Queue**: 消息的逻辑分组
+- **消息投递语义**: At-most-once / At-least-once / Exactly-once
+- **消费者组**: 消息的负载均衡与广播
+
+后续文章将深入各消息队列的实现原理与实践。

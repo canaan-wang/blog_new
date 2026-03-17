@@ -1,0 +1,135 @@
+---
+title: "判断比较方式"
+date: "2025-11-01"
+summary: "# 一、基本数据类型的比较 == 运算符"
+tags: ["java", "判断", "比较"]
+category: "java"
+domain: "software-dev-languages"
+group: "基础"
+draft: false
+---
+
+# 一、基本数据类型的比较 == 运算符
+
+## 1.1 核心规则
+
+- 整数、字符、布尔类型：直接通过`==`比较值，字符本质是比较ASCII码。
+
+- 浮点类型（float、double）：因二进制存储特性存在精度损失，**绝对不能直接用==判断相等**。
+
+## 1.2 浮点类型比较解决方案
+
+推荐使用`java.math.BigDecimal`，通过字符串构造方法初始化避免误差，核心用`compareTo()`方法判断（返回-1/0/1代表小于/等于/大于）。
+
+```java
+
+// 正确方式
+BigDecimal bd1 = new BigDecimal("0.1").add(new BigDecimal("0.2"));
+BigDecimal bd2 = new BigDecimal("0.3");
+boolean isEqual = bd1.compareTo(bd2) == 0; // true
+```
+
+# 二、引用数据类型的比较：地址 vs 内容
+
+引用类型（类、接口、数组等）存储堆内存地址，比较分两种场景：
+
+## 2.1 地址比较 == 运算符
+
+比较两个引用是否指向**同一个对象**，与内容无关。
+
+```java
+
+User u1 = new User("张三", 20);
+User u2 = u1; // 指向同一对象
+User u3 = new User("张三", 20); // 新对象
+System.out.println(u1 == u2); // true（地址相同）
+System.out.println(u1 == u3); // false（地址不同）
+```
+
+## 2.2 内容比较 equals() 方法
+
+- Object类默认实现：与 == 一致（比较地址），自定义类需**重写equals()**实现内容比较。
+
+- 内置类（String、Integer、List等）：已重写equals()，可直接比较内容。
+
+## 2.3 自定义类重写 equals() 规范
+
+遵循等价性原则（自反性、对称性等），需结合hashCode()一起重写（否则影响HashMap等集合）。
+
+步骤：判空→判地址→判类型→强转后比较核心属性。
+
+# 三、特殊场景：字符串与包装类
+
+## 3.1 字符串比较
+
+### 3.1.1 关键特性
+
+- 字面量创建（`String s="abc"`）：复用字符串常量池对象。
+
+- new创建（`new String("abc")`）：在堆新建对象，与常量池地址不同。
+
+### 3.1.2 核心结论
+
+**永远用** ** ** **equals()** ** ** **判断内容**，判断是否为同一对象时用 ==。
+
+## 3.2 包装类比较
+
+### 3.2.1 缓存机制影响
+
+Integer、Short等默认缓存-128~127范围对象，字面量创建时复用，超出则新建。
+
+```java
+
+Integer i1=100, i2=100; // 缓存复用，==返回true
+Integer i3=200, i4=200; // 超出缓存，==返回false
+```
+
+### 3.2.2 核心结论
+
+优先用 equals()，或转基本类型后用 ==，避免依赖缓存机制。
+
+# 四、对象排序比较：Comparable与Comparator
+
+equals() 仅判断相等，排序需用以下两个接口：
+
+|维度|Comparable（自然排序）|Comparator（定制排序）|
+|---|---|---|
+|实现位置|自定义类内部|类外部单独实现|
+|排序规则|固定，如按年龄升序|灵活，可多规则切换|
+|核心方法|compareTo(T o)|compare(T o1, T o2)|
+|示例|class User implements Comparable\{@Override public int compareTo(User o)\{return this.age-o.age;\}\}|Arrays.sort(users, (u1,u2)->u1.getName().length()-u2.getName().length());|
+# 五、流程控制中的条件判断
+
+## 5.1 if-else：灵活条件判断
+
+基于布尔表达式判断，支持单分支、二分支、多分支（if-else if-else），适合**复杂条件（范围、逻辑组合）**。
+
+注意：布尔表达式必须为boolean类型，建议始终加代码块大括号，else匹配最近未匹配的if。
+
+## 5.2 switch：多固定值匹配
+
+适合**多个固定值匹配**，支持byte、short、int、char、枚举、String（Java7+）。Java14+支持表达式返回值。
+
+```java
+
+// 现代switch表达式
+String season = switch (month) {
+    case 3,4,5 -> "春季";
+    case 6,7,8 -> "夏季";
+    default -> {yield "无效";}
+};
+```
+
+注意：case值需唯一且为常量，建议加default处理意外输入。
+
+# 六、核心总结
+
+- 基本类型：== 比较值，浮点用BigDecimal。
+
+- 引用类型：equals()比内容，==比地址；自定义类重写equals()需配hashCode()。
+
+- 特殊类型：字符串强制用equals()；包装类优先用equals()。
+
+- 排序比较：Comparable（固定）、Comparator（灵活）。
+
+- 流程判断：复杂条件用if-else，固定值匹配用switch。
