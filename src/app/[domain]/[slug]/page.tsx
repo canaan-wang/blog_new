@@ -38,7 +38,7 @@ export default async function ArticlePage({
   const components = getMDXComponents();
 
   return (
-    <article className="max-w-3xl">
+    <article className="mx-auto w-full">
       {/* Article Header */}
       <header className="mb-8">
         <h1 className="mb-4 font-serif text-3xl font-bold leading-tight text-foreground md:text-4xl">

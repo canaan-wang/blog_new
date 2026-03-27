@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
@@ -9,6 +10,7 @@ import {
 } from "@/lib/content";
 import { getMDXComponents } from "@/components/article/MDXComponents";
 import { domains } from "@/lib/domains";
+import CategoryContent from "./CategoryContent";
 
 export async function generateStaticParams() {
   return domains.map((d) => ({ domain: d.slug }));
@@ -37,14 +39,47 @@ export default async function DomainPage({
   const data = await getDomainWithCategories(domain);
   if (!data) notFound();
 
-  const firstCategory = data.categories[0];
-  const intro = firstCategory
-    ? await getCategoryIntro(domain, firstCategory.slug)
-    : null;
-
   const components = getMDXComponents();
 
-  if (!intro) {
+  // Pre-render all category intros
+  const categoryIntros: Array<{
+    slug: string;
+    title: string;
+    content: React.ReactNode;
+  }> = [];
+
+  for (const category of data.categories) {
+    const intro = await getCategoryIntro(domain, category.slug);
+    if (intro) {
+      categoryIntros.push({
+        slug: category.slug,
+        title: intro.title,
+        content: (
+          <MDXRemote
+            source={intro.content}
+            components={components}
+            options={{
+              mdxOptions: {
+                remarkPlugins: [remarkGfm],
+                rehypePlugins: [
+                  rehypeSlug,
+                  [
+                    rehypePrettyCode,
+                    {
+                      theme: "monokai",
+                      keepBackground: true,
+                    },
+                  ],
+                ],
+              },
+            }}
+          />
+        ),
+      });
+    }
+  }
+
+  if (categoryIntros.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
@@ -61,28 +96,11 @@ export default async function DomainPage({
   }
 
   return (
-    <article className="max-w-3xl">
-      <div className="prose prose-lg max-w-none">
-        <MDXRemote
-          source={intro.content}
-          components={components}
-          options={{
-            mdxOptions: {
-              remarkPlugins: [remarkGfm],
-              rehypePlugins: [
-                rehypeSlug,
-                [
-                  rehypePrettyCode,
-                  {
-                    theme: "monokai",
-                    keepBackground: true,
-                  },
-                ],
-              ],
-            },
-          }}
-        />
-      </div>
-    </article>
+    <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-muted">加载中...</div></div>}>
+      <CategoryContent
+        categories={categoryIntros}
+        defaultSlug={categoryIntros[0]?.slug || ""}
+      />
+    </Suspense>
   );
 }

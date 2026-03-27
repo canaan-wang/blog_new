@@ -29,9 +29,67 @@ export const domains: Domain[] = [
     icon: "compass",
     order: 4,
   },
+  {
+    slug: "frontend-development",
+    title: "前端开发",
+    description: "Web 前端技术栈，涵盖 HTML、CSS、JavaScript、移动端开发等",
+    icon: "monitor",
+    order: 5,
+  },
 ];
 
 export const categoriesByDomain: Record<string, Category[]> = {
+  "frontend-development": [
+    {
+      slug: "html",
+      title: "HTML",
+      description: "HTML 标记语言与语义化",
+      order: 1,
+      domainSlug: "frontend-development",
+    },
+    {
+      slug: "css",
+      title: "CSS",
+      description: "CSS 样式、布局与动画",
+      order: 2,
+      domainSlug: "frontend-development",
+    },
+    {
+      slug: "javascript",
+      title: "JavaScript",
+      description: "JavaScript 核心语法与特性",
+      order: 3,
+      domainSlug: "frontend-development",
+    },
+    {
+      slug: "typescript",
+      title: "TypeScript",
+      description: "TypeScript 类型系统与最佳实践",
+      order: 4,
+      domainSlug: "frontend-development",
+    },
+    {
+      slug: "frameworks",
+      title: "前端框架",
+      description: "React、Vue、Angular 等主流框架",
+      order: 5,
+      domainSlug: "frontend-development",
+    },
+    {
+      slug: "mobile",
+      title: "移动端开发",
+      description: "React Native、Flutter、小程序等移动端技术",
+      order: 6,
+      domainSlug: "frontend-development",
+    },
+    {
+      slug: "engineering",
+      title: "前端工程化",
+      description: "构建工具、性能优化与工程实践",
+      order: 7,
+      domainSlug: "frontend-development",
+    },
+  ],
   "software-dev-languages": [
     {
       slug: "golang",
