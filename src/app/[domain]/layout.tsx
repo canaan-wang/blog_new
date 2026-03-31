@@ -22,14 +22,16 @@ export default async function DomainLayout({
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       <Sidebar data={sidebarData} />
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-7xl justify-center gap-8 px-6 py-8 lg:px-8">
-          {/* Main content area - centered */}
-          <div className="min-w-0 flex-1 max-w-3xl">
+      <main id="main-scroll-container" className="min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-7xl justify-center gap-6 px-4 py-8 lg:px-8">
+          {/* Main content area - centered with fixed max-width */}
+          <div className="min-w-0 w-full max-w-3xl">
             {children}
           </div>
           {/* Right sidebar - Table of Contents */}
-          <TableOfContents />
+          <div className="hidden xl:block">
+            <TableOfContents />
+          </div>
         </div>
       </main>
     </div>

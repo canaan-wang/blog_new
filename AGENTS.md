@@ -11,6 +11,7 @@ This file provides essential context for AI coding agents working on this projec
 - **静态导出**：使用 `output: 'export'` 生成纯静态站点，输出目录为 `./out`
 - **中文内容为主**：博客文章主要使用中文编写，界面字体针对中文显示优化
 - **分层内容组织**：Domain（领域）→ Category（分类）→ Article（文章）三级结构
+- **静态内容生成**：MDX 文件在构建时通过脚本编译为静态数据，存储于 `src/lib/static-content.ts`
 - **暖色调主题**：米黄色背景（#fffdf8）配合橙色强调色（#f0923b）
 
 ---
@@ -25,55 +26,56 @@ This file provides essential context for AI coding agents working on this projec
 | 样式 | Tailwind CSS 4.x + @tailwindcss/typography |
 | 内容处理 | gray-matter + next-mdx-remote |
 | 代码高亮 | rehype-pretty-code + Shiki (monokai 主题) |
-| 图表 | mermaid (客户端渲染) |
-| Markdown | remark-gfm (GitHub Flavored Markdown) |
 | 图标 | lucide-react |
-| 字体 | Noto Serif SC, Noto Sans SC, JetBrains Mono |
+| 动画 | framer-motion |
+| 字体 | Noto Serif SC, Noto Sans SC, JetBrains Mono (Google Fonts) |
 
 ---
 
 ## Project Structure
 
 ```
-├── .github/workflows/
-│   └── deploy.yml          # GitHub Pages 自动部署工作流
-├── content/                # MDX 文章内容目录
-│   ├── {domain-slug}/      # 领域目录（如 software-dev-languages）
-│   │   ├── {category}/     # 分类目录（如 golang）
-│   │   │   ├── _intro.mdx  # 分类介绍文件（可选）
-│   │   │   └── *.mdx       # 文章文件
+├── content/                   # MDX 文章内容目录（构建时处理）
+│   ├── {domain-slug}/         # 领域目录（如 software-dev-languages）
+│   │   ├── {category}/        # 分类目录（如 golang）
+│   │   │   ├── _intro.mdx     # 分类介绍文件（可选）
+│   │   │   └── *.mdx          # 文章文件
 │   └── ...
 ├── src/
-│   ├── app/                # Next.js App Router
-│   │   ├── [domain]/       # 领域路由（动态路由）
-│   │   │   ├── [slug]/     # 文章页面路由
-│   │   │   │   └── page.tsx
-│   │   │   ├── layout.tsx  # 领域布局（含侧边栏）
-│   │   │   ├── page.tsx    # 领域首页（展示分类概览）
-│   │   │   └── CategoryContent.tsx
-│   │   ├── globals.css     # 全局样式与主题变量
-│   │   ├── layout.tsx      # 根布局（导航栏、页脚）
-│   │   ├── page.tsx        # 首页
-│   │   └── not-found.tsx   # 404 页面
+│   ├── app/                   # Next.js App Router
+│   │   ├── [domain]/          # 领域路由（动态路由）
+│   │   │   ├── [slug]/        # 文章页面路由
+│   │   │   │   └── page.tsx   # 文章详情页
+│   │   │   ├── layout.tsx     # 领域布局（含侧边栏）
+│   │   │   ├── page.tsx       # 领域首页（展示分类概览）
+│   │   │   └── CategoryContent.tsx  # 分类内容客户端组件
+│   │   ├── globals.css        # 全局样式与主题变量
+│   │   ├── layout.tsx         # 根布局（导航栏、页脚）
+│   │   ├── page.tsx           # 首页
+│   │   └── not-found.tsx      # 404 页面
 │   ├── components/
 │   │   ├── article/
-│   │   │   └── MDXComponents.tsx  # MDX 自定义渲染组件
+│   │   │   └── MDXComponents.tsx    # MDX 自定义渲染组件
 │   │   └── layout/
-│   │       ├── Navbar.tsx         # 顶部导航栏
-│   │       ├── Sidebar.tsx        # 左侧分类/文章导航
-│   │       ├── TableOfContents.tsx # 右侧目录（桌面端）
-│   │       └── Footer.tsx         # 页脚
+│   │       ├── Navbar.tsx           # 顶部导航栏
+│   │       ├── Sidebar.tsx          # 左侧分类/文章导航
+│   │       ├── TableOfContents.tsx  # 右侧目录（桌面端）
+│   │       └── Footer.tsx           # 页脚
 │   ├── config/
-│   │   └── site.ts         # 站点配置（标题、作者等）
+│   │   └── site.ts           # 站点配置（标题、作者等）
 │   ├── lib/
-│   │   ├── domains.ts      # 领域/分类定义（硬编码）
-│   │   └── content.ts      # 内容加载工具函数
+│   │   ├── domains.ts        # 领域/分类定义（硬编码）
+│   │   ├── content.ts        # 内容加载函数（React cache 包装）
+│   │   └── static-content.ts # 自动生成的静态内容注册表
 │   └── types/
-│       └── index.ts        # TypeScript 类型定义
-├── next.config.ts          # Next.js 配置（静态导出、basePath）
-├── tsconfig.json           # TypeScript 配置
-├── postcss.config.mjs      # PostCSS 配置
-└── eslint.config.mjs       # ESLint 配置
+│       └── index.ts          # TypeScript 类型定义
+├── scripts/
+│   └── generate-static-registry.ts  # 静态内容生成脚本
+├── next.config.ts            # Next.js 配置（静态导出、basePath）
+├── tsconfig.json             # TypeScript 配置
+├── postcss.config.mjs        # PostCSS 配置（Tailwind CSS v4）
+├── eslint.config.mjs         # ESLint 配置（Next.js 官方配置）
+└── package.json              # 项目依赖与脚本
 ```
 
 ---
@@ -93,6 +95,9 @@ npm run start
 
 # 代码检查
 npm run lint
+
+# 生成静态内容注册表（构建前自动执行）
+npx tsx scripts/generate-static-registry.ts
 ```
 
 ---
@@ -111,31 +116,16 @@ Domain（领域）→ Category（分类）→ Article（文章）
 - **Category**: `golang`（Go 语言）
 - **Article**: `go-channel.mdx`（Channel 文章）
 
-### Domain Configuration
+### Content Generation Flow
 
-所有领域和分类在 `src/lib/domains.ts` 中硬编码定义：
+1. **开发阶段**：在 `content/{domain}/{category}/` 目录下编写 MDX 文件
+2. **构建阶段**：`scripts/generate-static-registry.ts` 扫描 content 目录
+3. **生成阶段**：脚本解析 MDX frontmatter，生成 `src/lib/static-content.ts`
+4. **渲染阶段**：Next.js 使用静态数据渲染页面
 
-```typescript
-// domains 数组定义所有领域
-export const domains: Domain[] = [
-  { slug: "software-dev-languages", title: "软件开发语言", ... },
-  { slug: "distributed-architecture", title: "分布式架构", ... },
-  // ...
-];
+**重要**：`src/lib/static-content.ts` 是自动生成的文件，**不要手动编辑**。
 
-// categoriesByDomain 定义每个领域的分类
-export const categoriesByDomain: Record<string, Category[]> = {
-  "software-dev-languages": [
-    { slug: "golang", title: "Golang", ... },
-    { slug: "java", title: "Java", ... },
-  ],
-  // ...
-};
-```
-
-**添加新 Domain/Category 必须编辑此文件**。
-
-### Article Frontmatter Format
+### MDX Frontmatter 格式
 
 ```yaml
 ---
@@ -165,6 +155,32 @@ draft: false                    # 草稿标记（true 则不会显示）
 
 ---
 
+## Domain & Category Configuration
+
+所有领域和分类在 `src/lib/domains.ts` 中硬编码定义：
+
+```typescript
+// domains 数组定义所有领域
+export const domains: Domain[] = [
+  { slug: "software-dev-languages", title: "软件开发语言", ... },
+  { slug: "distributed-architecture", title: "分布式架构", ... },
+  // ...
+];
+
+// categoriesByDomain 定义每个领域的分类
+export const categoriesByDomain: Record<string, Category[]> = {
+  "software-dev-languages": [
+    { slug: "golang", title: "Golang", ... },
+    { slug: "java", title: "Java", ... },
+  ],
+  // ...
+};
+```
+
+**添加新 Domain/Category 必须编辑此文件**。
+
+---
+
 ## MDX Processing Pipeline
 
 文章渲染使用 `next-mdx-remote/rsc`，处理流程如下：
@@ -172,7 +188,6 @@ draft: false                    # 草稿标记（true 则不会显示）
 ### Remark Plugins（Markdown 处理）
 
 1. **remark-gfm**: GitHub Flavored Markdown（表格、删除线、任务列表等）
-2. **remark-mermaidjs**: Mermaid 图表渲染
 
 ### Rehype Plugins（HTML 处理）
 
@@ -211,7 +226,10 @@ draft: false                    # 草稿标记（true 则不会显示）
   --muted: #8a7e72;           /* 次要文字 */
   --sidebar-bg: #fef9f0;      /* 侧边栏背景 */
   --card-bg: #ffffff;         /* 卡片背景 */
+  --card-shadow: rgba(240, 146, 59, 0.06);
   --nav-bg: rgba(255, 253, 248, 0.92); /* 导航栏背景（带透明） */
+  --tag-active-bg: #f0923b;   /* 激活标签背景 */
+  --tag-active-text: #ffffff; /* 激活标签文字 */
 }
 ```
 
@@ -224,10 +242,10 @@ draft: false                    # 草稿标记（true 则不会显示）
 ### Layout
 
 - **导航栏**: 固定顶部，高度 4rem (64px)
-- **主内容区**: 最大宽度 7xl (1280px)，居中
+- **主内容区**: 最大宽度 6xl (1152px)，居中
 - **文章正文**: 最大宽度 3xl (768px)
 - **侧边栏**: 宽度 280px，固定左侧
-- **目录**: 宽度 240px，固定右侧（仅桌面端显示）
+- **目录**: 宽度 15% (min 12rem, max 16rem)，固定右侧（仅桌面端显示）
 
 ---
 
@@ -236,10 +254,12 @@ draft: false                    # 草稿标记（true 则不会显示）
 | 文件 | 用途 |
 |------|------|
 | `src/lib/domains.ts` | 领域/分类定义，添加新栏目必须修改 |
-| `src/lib/content.ts` | 内容加载函数，使用 React `cache()` 优化 |
+| `src/lib/content.ts` | 内容加载函数，使用 React `cache()` 进行请求级缓存 |
+| `src/lib/static-content.ts` | 自动生成的静态内容注册表，**不要手动编辑** |
 | `src/types/index.ts` | 类型定义（Domain, Category, ArticleMeta 等） |
 | `src/config/site.ts` | 站点基本信息配置 |
 | `src/app/globals.css` | 主题变量、字体、滚动条样式 |
+| `scripts/generate-static-registry.ts` | 静态内容生成脚本 |
 | `next.config.ts` | 静态导出配置，`basePath: '/blog_new'` 用于生产环境 |
 
 ---
@@ -258,25 +278,47 @@ import type { Article } from "@/types";
 
 ## Deployment
 
-### GitHub Pages 自动部署
+### GitHub Pages 部署
 
-- **触发条件**: `main` 分支的 push 操作，或手动触发
-- **工作流文件**: `.github/workflows/deploy.yml`
-- **Node.js 版本**: 20
 - **构建输出**: `./out` 目录
-- **部署方式**: GitHub Actions 的 `deploy-pages` action
+- **配置**: `basePath: '/blog_new'` 在 `next.config.ts` 中定义
+- **图片**: 必须使用 `unoptimized: true`（静态导出限制）
 
-### Configuration for GitHub Pages
+### 手动部署到 GitHub Pages
 
-```typescript
-// next.config.ts
-const nextConfig: NextConfig = {
-  output: 'export',
-  basePath: isProd ? '/blog_new' : '',  // GitHub Pages 仓库名
-  images: {
-    unoptimized: true,  // 静态导出必须禁用图片优化
-  },
-};
+```bash
+# 构建
+npm run build
+
+# 部署 out 目录到 GitHub Pages
+# 可通过 GitHub Actions 工作流自动化
+```
+
+### GitHub Actions 工作流示例
+
+如需自动部署，创建 `.github/workflows/deploy.yml`：
+
+```yaml
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/deploy-pages@v4
+        with:
+          folder: out
 ```
 
 ---
@@ -285,22 +327,39 @@ const nextConfig: NextConfig = {
 
 ### Adding New Content
 
-1. **添加新领域**: 编辑 `src/lib/domains.ts`
-   - 在 `domains` 数组中添加 Domain 定义
-   - 在 `categoriesByDomain` 中添加该领域的分类列表
+#### 1. 添加新领域
 
-2. **添加新分类**: 编辑 `src/lib/domains.ts`
-   - 在对应 domain 的 `categoriesByDomain[domainSlug]` 数组中添加 Category 定义
-   - 创建目录 `content/{domain}/{category}/`
-   - （可选）添加 `_intro.mdx` 介绍文件
+编辑 `src/lib/domains.ts`：
+- 在 `domains` 数组中添加 Domain 定义
+- 在 `categoriesByDomain` 中添加该领域的分类列表
 
-3. **添加新文章**: 创建 `.mdx` 文件
-   ```bash
-   content/{domain}/{category}/article-slug.mdx
-   ```
-   - 文件名即为 URL slug
-   - 必须包含完整的 frontmatter
-   - 使用 `group` 字段控制侧边栏分组
+#### 2. 添加新分类
+
+编辑 `src/lib/domains.ts`：
+- 在对应 domain 的 `categoriesByDomain[domainSlug]` 数组中添加 Category 定义
+- 创建目录 `content/{domain}/{category}/`
+- （可选）添加 `_intro.mdx` 介绍文件
+
+#### 3. 添加 MDX 文章
+
+```bash
+content/{domain}/{category}/article-slug.mdx
+```
+- 文件名即为 URL slug
+- 必须包含完整的 frontmatter
+- 使用 `group` 字段控制侧边栏分组
+
+#### 4. 重新生成静态内容
+
+```bash
+npx tsx scripts/generate-static-registry.ts
+```
+
+或重新构建：
+
+```bash
+npm run build
+```
 
 ### Content Writing Tips
 
@@ -317,18 +376,81 @@ const nextConfig: NextConfig = {
 
 ---
 
+## Code Style Guidelines
+
+### TypeScript
+
+- 使用严格模式（`strict: true`）
+- 优先使用 `type` 定义对象形状
+- 组件 Props 使用接口定义
+
+### React
+
+- 优先使用 Server Components（默认）
+- 需要客户端交互时使用 `"use client"` 指令
+- 使用 Tailwind CSS 进行样式处理
+
+### File Naming
+
+- 组件文件：PascalCase（如 `Sidebar.tsx`）
+- 工具文件：camelCase（如 `content.ts`）
+- 文章文件：kebab-case（如 `go-channel.mdx`）
+
+---
+
 ## Common Issues
 
 ### 文章未显示
+
 - 检查 frontmatter 中的 `draft` 是否为 `true`
 - 确认 `domain` 和 `category` 与文件路径匹配
 - 检查 `domains.ts` 中是否已定义该 domain/category
+- 确认已重新运行内容生成脚本
 
 ### 构建失败
+
 - 检查 MDX 语法是否正确
 - 确认所有导入路径正确
-- Mermaid 图表语法错误可能导致构建失败
+- 检查 `static-content.ts` 是否已生成
 
 ### 样式问题
+
 - 暖色调主题变量定义在 `globals.css` 的 `:root`
 - Tailwind 自定义颜色在 `@theme inline` 中定义
+- 确保使用正确的 CSS 变量（如 `--color-background`）
+
+---
+
+## Dependencies Overview
+
+### Production Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| next | 16.1.6 | Next.js 框架 |
+| react | 19.2.3 | React 运行时 |
+| react-dom | 19.2.3 | React DOM |
+| framer-motion | ^12.38.0 | 动画库 |
+| next-mdx-remote | ^6.0.0 | MDX 远程渲染 |
+| gray-matter | ^4.0.3 | Frontmatter 解析 |
+| tailwindcss | ^4 | CSS 框架 |
+| @tailwindcss/typography | ^0.5.19 | 排版样式 |
+| @tailwindcss/postcss | ^4 | PostCSS 插件 |
+| lucide-react | ^0.577.0 | 图标库 |
+| mermaid | ^11.13.0 | Mermaid 图表渲染 |
+| rehype-pretty-code | ^0.14.3 | 代码高亮 |
+| rehype-slug | ^6.0.0 | 标题 ID 生成 |
+| rehype-autolink-headings | ^7.1.0 | 标题自动链接 |
+| remark-gfm | ^4.0.1 | GitHub Flavored Markdown |
+| shiki | ^4.0.2 | 语法高亮引擎 |
+
+### Development Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| typescript | ^5 | TypeScript 编译器 |
+| @types/react | ^19 | React 类型定义 |
+| @types/node | ^20 | Node.js 类型定义 |
+| eslint | ^9 | 代码检查 |
+| eslint-config-next | 16.1.6 | Next.js ESLint 配置 |
+| tsx | ^4 | TypeScript 执行器（用于脚本）|

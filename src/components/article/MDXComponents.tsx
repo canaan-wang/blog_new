@@ -7,13 +7,13 @@ export function getMDXComponents(): MDXComponents {
         {children}
       </h1>
     ),
-    h2: ({ children }) => (
-      <h2 className="mb-3 mt-8 border-b border-border pb-2 font-serif text-2xl font-bold text-foreground">
+    h2: ({ children, id }) => (
+      <h2 id={id} className="mb-3 mt-8 border-b border-border pb-2 font-serif text-2xl font-bold text-foreground">
         {children}
       </h2>
     ),
-    h3: ({ children }) => (
-      <h3 className="mb-2 mt-6 font-serif text-xl font-bold text-foreground">
+    h3: ({ children, id }) => (
+      <h3 id={id} className="mb-2 mt-6 font-serif text-xl font-bold text-foreground">
         {children}
       </h3>
     ),
