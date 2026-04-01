@@ -80,15 +80,18 @@ export default function TableOfContents() {
     
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveId(entry.target.id);
-          }
-        });
+        // Sort by position to find the topmost visible heading
+        const visibleEntries = entries
+          .filter(entry => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        
+        if (visibleEntries.length > 0) {
+          setActiveId(visibleEntries[0].target.id);
+        }
       },
       { 
         root: scrollContainer,
-        rootMargin: "-80px 0px -70% 0px",
+        rootMargin: "-100px 0px -60% 0px",
         threshold: 0 
       }
     );
@@ -118,20 +121,35 @@ export default function TableOfContents() {
   // Scroll to heading
   const scrollTo = useCallback((id: string) => {
     const el = document.getElementById(id);
-    const scrollContainer = document.getElementById("main-scroll-container");
+    if (!el) {
+      console.warn(`[TableOfContents] Target element with id "${id}" not found`);
+      return;
+    }
+
+    // Try to find scroll container, fallback to window
+    let scrollContainer = document.getElementById("main-scroll-container");
     
-    if (el && scrollContainer) {
-      // Calculate position relative to scroll container
-      const containerRect = scrollContainer.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const relativeTop = elRect.top - containerRect.top + scrollContainer.scrollTop;
-      const offset = 32; // Reduced offset to bring heading closer to top
-      
-      scrollContainer.scrollTo({
-        top: relativeTop - offset,
+    if (!scrollContainer) {
+      // Fallback to window scroll
+      const offset = 100; // Offset for navbar
+      const top = el.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({
+        top: Math.max(0, top),
         behavior: "smooth"
       });
+      return;
     }
+    
+    // Calculate position relative to scroll container
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const relativeTop = elRect.top - containerRect.top + scrollContainer.scrollTop;
+    const offset = 100; // Offset for navbar
+    
+    scrollContainer.scrollTo({
+      top: Math.max(0, relativeTop - offset),
+      behavior: "smooth"
+    });
   }, []);
 
   // Toggle section
@@ -179,14 +197,18 @@ export default function TableOfContents() {
                     )}
                     {!hasKids && <span className="w-2" />}
                     
-                    <button
-                      onClick={() => scrollTo(sec.h2.id)}
-                      className={`flex-1 py-2 pr-2 text-left text-sm ${
+                    <a
+                      href={`#${sec.h2.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        scrollTo(sec.h2.id);
+                      }}
+                      className={`flex-1 py-2 pr-2 text-left text-sm cursor-pointer ${
                         isH2Active ? "font-medium text-accent" : "text-foreground hover:text-accent"
                       }`}
                     >
                       <span className="line-clamp-2">{sec.h2.text}</span>
-                    </button>
+                    </a>
                   </div>
                   
                   {/* H3 children */}
@@ -196,9 +218,13 @@ export default function TableOfContents() {
                         const isH3Active = activeId === h3.id;
                         return (
                           <li key={h3.id}>
-                            <button
-                              onClick={() => scrollTo(h3.id)}
-                              className={`ml-5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs ${
+                            <a
+                              href={`#${h3.id}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                scrollTo(h3.id);
+                              }}
+                              className={`ml-5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs cursor-pointer ${
                                 isH3Active 
                                   ? "font-medium text-accent" 
                                   : "text-muted hover:text-foreground"
@@ -208,7 +234,7 @@ export default function TableOfContents() {
                                 isH3Active ? "bg-accent" : "bg-border"
                               }`} />
                               <span className="line-clamp-2">{h3.text}</span>
-                            </button>
+                            </a>
                           </li>
                         );
                       })}
