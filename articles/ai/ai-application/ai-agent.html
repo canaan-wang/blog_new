@@ -1,0 +1,256 @@
+<h1>AI Agent 应用开发</h1>
+<p>AI Agent（智能体）是人工智能应用的重要形态，它能够感知环境、进行决策并执行动作，实现自主完成复杂任务的目标。</p>
+
+<h2>什么是 AI Agent</h2>
+<p>AI Agent 是一个能够自主运行的智能系统，它具备以下核心能力：</p>
+<ul>
+  <li><strong>感知（Perception）</strong>：接收和理解来自环境的信息</li>
+  <li><strong>推理（Reasoning）</strong>：分析问题并制定解决方案</li>
+  <li><strong>记忆（Memory）</strong>：存储和检索相关信息</li>
+  <li><strong>行动（Action）</strong>：通过工具或接口与环境交互</li>
+  <li><strong>学习（Learning）</strong>：从经验中改进性能</li>
+</ul>
+
+<h2>AI Agent 架构</h2>
+
+<h3>基础架构组件</h3>
+<pre style="background: #f8f8f8; padding: 15px; border-radius: 4px;">┌─────────────────────────────────────────────────────────┐
+│                     AI Agent System                     │
+├─────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │   Planning  │  │    Memory   │  │   Tools     │     │
+│  │   规划模块   │  │    记忆模块  │  │   工具模块   │     │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
+│         └─────────────────┼─────────────────┘           │
+│                           │                             │
+│                    ┌──────▼──────┐                      │
+│                    │     LLM     │                      │
+│                    │   大语言模型 │                      │
+│                    └──────┬──────┘                      │
+│                           │                             │
+│         ┌─────────────────┼─────────────────┐           │
+│  ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼──────┐     │
+│  │   Input     │  │  Reasoning  │  │   Output    │     │
+│  │   输入处理   │  │   推理决策   │  │   输出生成   │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+└─────────────────────────────────────────────────────────┘</pre>
+
+<h3>核心模块详解</h3>
+
+<h4>规划模块（Planning）</h4>
+<p>将复杂任务分解为可执行的子任务：</p>
+<ul>
+  <li><strong>任务分解</strong>：将大任务拆分为小步骤</li>
+  <li><strong>计划生成</strong>：制定执行策略和顺序</li>
+  <li><strong>反思与修正</strong>：根据执行反馈调整计划</li>
+</ul>
+
+<h4>记忆模块（Memory）</h4>
+<p>管理短期和长期信息：</p>
+<ul>
+  <li><strong>短期记忆（Short-term）</strong>：当前对话上下文</li>
+  <li><strong>长期记忆（Long-term）</strong>：用户偏好、历史知识</li>
+  <li><strong>向量数据库</strong>：语义检索相关记忆</li>
+</ul>
+
+<h4>工具模块（Tools）</h4>
+<p>扩展 Agent 能力的各种工具：</p>
+<ul>
+  <li>搜索引擎</li>
+  <li>代码执行器</li>
+  <li>API 调用</li>
+  <li>数据库查询</li>
+  <li>文件操作</li>
+</ul>
+
+<h2>主流 Agent 框架</h2>
+
+<h3>LangChain</h3>
+<p>最流行的 LLM 应用开发框架，提供完整的 Agent 支持。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">from langchain.agents import Tool, AgentExecutor, create_react_agent
+from langchain.tools import DuckDuckGoSearchRun
+from langchain_openai import ChatOpenAI
+
+# 定义工具
+tools = [
+    Tool(
+        name="Search",
+        func=DuckDuckGoSearchRun().run,
+        description="用于搜索网络信息"
+    ),
+    Tool(
+        name="Calculator",
+        func=lambda x: eval(x),
+        description="用于数学计算"
+    )
+]
+
+# 创建 Agent
+llm = ChatOpenAI(temperature=0)
+agent = create_react_agent(llm, tools)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+# 运行
+result = agent_executor.invoke({"input": "2024年巴黎奥运会举办时间？"})</pre>
+
+<h3>AutoGPT</h3>
+<p>早期具有影响力的自主 Agent 项目，能够自动分解和完成任务。</p>
+
+<h3>Microsoft AutoGen</h3>
+<p>支持多 Agent 协作的框架，允许多个 Agent 对话解决复杂问题。</p>
+
+<h3>CrewAI</h3>
+<p>面向角色的多 Agent 系统，适合构建团队协作场景。</p>
+
+<h2>Agent 开发实战</h2>
+
+<h3>Step 1: 定义工具</h3>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">import requests
+from langchain.tools import BaseTool
+
+class WeatherTool(BaseTool):
+    name = "weather"
+    description = "查询指定城市的天气信息"
+    
+    def _run(self, city: str):
+        """查询天气"""
+        # 调用天气 API
+        response = requests.get(f"https://api.weather.com/v1/current?city={city}")
+        return response.json()
+    
+    async def _arun(self, city: str):
+        raise NotImplementedError("不支持异步")</pre>
+
+<h3>Step 2: 构建记忆系统</h3>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">from langchain.memory import ConversationBufferMemory
+from langchain_community.vectorstores import Chroma
+from langchain_openai import OpenAIEmbeddings
+
+# 对话记忆
+conversation_memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True
+)
+
+# 知识库记忆
+embeddings = OpenAIEmbeddings()
+vectorstore = Chroma(
+    collection_name="agent_memory",
+    embedding_function=embeddings
+)</pre>
+
+<h3>Step 3: 创建 Agent</h3>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">from langchain.agents import initialize_agent, AgentType
+
+# 初始化 Agent
+agent = initialize_agent(
+    tools=[WeatherTool(), SearchTool(), CalculatorTool()],
+    llm=ChatOpenAI(temperature=0),
+    agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+    memory=conversation_memory,
+    verbose=True,
+    handle_parsing_errors=True
+)</pre>
+
+<h3>Step 4: 添加 RAG 能力</h3>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">from langchain.chains import RetrievalQA
+
+# 创建检索器
+retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+# RAG 工具
+class KnowledgeBaseTool(BaseTool):
+    name = "knowledge_base"
+    description = "从知识库中检索相关信息"
+    
+    def _run(self, query: str):
+        docs = retriever.get_relevant_documents(query)
+        return "\n".join([doc.page_content for doc in docs])</pre>
+
+<h2>多 Agent 协作系统</h2>
+
+<h3>典型场景</h3>
+<ul>
+  <li><strong>软件开发</strong>：产品经理、架构师、开发工程师、测试工程师 Agent 协作</li>
+  <li><strong>客户服务</strong>：意图识别、知识检索、工单处理 Agent 分工</li>
+  <li><strong>数据分析</strong>：数据工程师、分析师、可视化专家 Agent 配合</li>
+</ul>
+
+<h3>协作模式</h3>
+
+<h4>层级模式（Hierarchical）</h4>
+<p>存在一个主管 Agent 协调多个专业 Agent。</p>
+
+<h4>平等模式（Peer-to-Peer）</h4>
+<p>多个 Agent 平等对话，共同决策。</p>
+
+<h4>流水线模式（Pipeline）</h4>
+<p>Agent 按顺序处理，前一个的输出是后一个的输入。</p>
+
+<h2>开发最佳实践</h2>
+
+<h3>1. 工具设计原则</h3>
+<ul>
+  <li><strong>单一职责</strong>：每个工具只做一件事</li>
+  <li><strong>清晰描述</strong>：工具描述要让 LLM 理解何时使用</li>
+  <li><strong>错误处理</strong>：提供友好的错误信息</li>
+  <li><strong>输入验证</strong>：验证参数合法性</li>
+</ul>
+
+<h3>2. 提示工程优化</h3>
+<ul>
+  <li>为 Agent 设定清晰的角色和能力边界</li>
+  <li>提供详细的工具使用说明</li>
+  <li>设置安全限制和行为准则</li>
+  <li>添加示例演示预期行为</li>
+</ul>
+
+<h3>3. 监控与调试</h3>
+<ul>
+  <li>记录完整的思考链（Chain of Thought）</li>
+  <li>追踪工具调用情况和结果</li>
+  <li>监控执行时间和成本</li>
+  <li>收集用户反馈用于迭代</li>
+</ul>
+
+<h3>4. 安全考虑</h3>
+<ul>
+  <li>限制工具权限，避免危险操作</li>
+  <li>验证 LLM 生成的代码或命令</li>
+  <li>敏感操作需要人工确认</li>
+  <li>实施输入输出过滤</li>
+</ul>
+
+<h2>应用场景</h2>
+
+<h3>个人助手</h3>
+<p>日程管理、邮件处理、信息检索、任务提醒。</p>
+
+<h3>代码助手</h3>
+<p>需求分析、代码生成、测试用例编写、文档生成。</p>
+
+<h3>数据分析助手</h3>
+<p>数据清洗、探索性分析、报告生成、可视化建议。</p>
+
+<h3>客户服务</h3>
+<p>问题分类、知识检索、工单处理、满意度跟踪。</p>
+
+<h2>挑战与展望</h2>
+
+<h3>当前挑战</h3>
+<ul>
+  <li><strong>可靠性</strong>：LLM 的不确定性影响 Agent 稳定性</li>
+  <li><strong>成本</strong>：多次调用 LLM 和工具的成本较高</li>
+  <li><strong>延迟</strong>：复杂任务需要多轮交互，响应时间较长</li>
+  <li><strong>评估</strong>：缺乏统一的 Agent 性能评估标准</li>
+</ul>
+
+<h3>发展趋势</h3>
+<ul>
+  <li>更强大的规划与推理能力</li>
+  <li>多模态 Agent（文本、图像、语音）</li>
+  <li>更高效的工具学习和使用</li>
+  <li>Agent 之间的标准化协作协议</li>
+</ul>
+
+<p>AI Agent 代表了人工智能应用的重要方向，它将大语言模型的理解能力与实际工具的执行能力相结合，正在开启智能自动化的新纪元。</p>

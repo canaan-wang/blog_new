@@ -1,0 +1,213 @@
+<h1>提示工程（Prompt Engineering）基础</h1>
+<p>提示工程是通过设计和优化输入提示词（Prompt），引导大语言模型生成高质量、符合预期的输出的技术。它是与 AI 模型交互的核心技能。</p>
+
+<h2>什么是提示工程</h2>
+<p>提示工程是连接人类意图与 AI 能力的桥梁。同样的模型，不同的提示词可能产生截然不同的结果。掌握提示工程技巧，可以：</p>
+<ul>
+  <li>显著提升模型输出质量</li>
+  <li>减少幻觉和不准确信息</li>
+  <li>规范输出格式</li>
+  <li>激发模型的专业能力</li>
+</ul>
+
+<h2>提示词的基本结构</h2>
+
+<h3>1. 指令（Instruction）</h3>
+<p>明确告诉模型要做什么任务。</p>
+<div style="background: #f5f5f5; padding: 10px; border-left: 3px solid #f0923b;">
+<strong>示例：</strong><br>
+"请总结以下文章的主要内容，控制在100字以内。"
+</div>
+
+<h3>2. 上下文（Context）</h3>
+<p>提供背景信息，帮助模型理解任务场景。</p>
+<div style="background: #f5f5f5; padding: 10px; border-left: 3px solid #f0923b;">
+<strong>示例：</strong><br>
+"你是一位资深的产品经理，正在为一款面向大学生的学习类 App 设计新功能。"
+</div>
+
+<h3>3. 输入数据（Input Data）</h3>
+<p>需要模型处理的具体内容。</p>
+<div style="background: #f5f5f5; padding: 10px; border-left: 3px solid #f0923b;">
+<strong>示例：</strong><br>
+"以下是用户反馈的原始文本：[用户反馈内容...]"
+</div>
+
+<h3>4. 输出格式（Output Format）</h3>
+<p>指定期望的输出形式和结构。</p>
+<div style="background: #f5f5f5; padding: 10px; border-left: 3px solid #f0923b;">
+<strong>示例：</strong><br>
+"请以 JSON 格式输出，包含 'sentiment'（情感标签）和 'confidence'（置信度）两个字段。"
+</div>
+
+<h2>核心提示技术</h2>
+
+<h3>零样本提示（Zero-shot Prompting）</h3>
+<p>直接给出任务指令，不提供示例。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">将以下中文翻译成英文：
+人工智能正在改变我们的生活方式。</pre>
+
+<h3>少样本提示（Few-shot Prompting）</h3>
+<p>提供几个示例，让模型学习模式。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">将情感分类为正面、负面或中性。
+
+文本：这部电影太棒了！
+情感：正面
+
+文本：排队等了两个小时，太糟糕了。
+情感：负面
+
+文本：今天天气不错。
+情感：正面
+
+文本：产品包装完好，物流很快。
+情感：</pre>
+
+<h3>思维链提示（Chain-of-Thought）</h3>
+<p>引导模型逐步推理，而非直接给出答案。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">问题：一个农场有鸡和兔子，共有35个头，94只脚。鸡和兔子各有多少只？
+
+让我们逐步思考：
+1. 设鸡有 x 只，兔子有 y 只
+2. 根据头的数量：x + y = 35
+3. 根据脚的数量：2x + 4y = 94
+4. 从第一式得：x = 35 - y
+5. 代入第二式：2(35-y) + 4y = 94
+6. 展开：70 - 2y + 4y = 94
+7. 化简：2y = 24，y = 12
+8. 所以 x = 35 - 12 = 23
+
+答案：鸡有23只，兔子有12只。</pre>
+
+<h3>角色扮演（Role Playing）</h3>
+<p>为模型设定特定角色，激活相应知识。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">你是一位经验丰富的 Python 编程专家，擅长代码优化和最佳实践。
+请帮我优化以下代码，并解释优化理由：</pre>
+
+<h3>分步指令（Step-by-step）</h3>
+<p>将复杂任务分解为多个步骤。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">请帮我撰写一篇关于人工智能的技术博客，按以下步骤完成：
+
+步骤1：确定一个具体的切入点（如 "AI 在医疗诊断中的应用"）
+步骤2：列出文章大纲（包含引言、3个主要论点、结论）
+步骤3：为每个部分撰写简要内容
+步骤4：提供一个吸引人的标题
+
+完成每个步骤后，我会确认再进行下一步。</pre>
+
+<h2>高级提示技巧</h2>
+
+<h3>自我一致性（Self-Consistency）</h3>
+<p>多次采样，选择出现频率最高的答案。</p>
+
+<h3>自动提示工程（APE）</h3>
+<p>使用模型自动生成和优化提示词。</p>
+
+<h3>检索增强生成（RAG）</h3>
+<p>结合外部知识库，在提示中注入相关上下文。</p>
+
+<h3>ReAct 模式（Reasoning + Acting）</h3>
+<p>让模型交替进行推理和行动，解决复杂问题。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">你可以使用以下工具：
+- search(query): 搜索网络信息
+- calculator(expression): 计算数学表达式
+
+问题：2023年诺贝尔文学奖得主是谁？他/她出生在哪个城市？
+
+思考1：我需要搜索2023年诺贝尔文学奖得主的信息。
+行动1：search("2023年诺贝尔文学奖得主")
+观察1：2023年诺贝尔文学奖授予了挪威作家约恩·福瑟（Jon Fosse）。
+
+思考2：现在我需要搜索约恩·福瑟的出生地。
+行动2：search("约恩·福瑟 出生地")
+观察2：约恩·福瑟出生于挪威海于格松（Haugesund）。
+
+思考3：我已经获得了所有需要的信息。
+最终答案：2023年诺贝尔文学奖得主是挪威作家约恩·福瑟（Jon Fosse），他出生于挪威的海于格松。</pre>
+
+<h2>提示工程最佳实践</h2>
+
+<h3>1. 清晰具体</h3>
+<ul>
+  <li>❌ "写一些关于猫的内容"</li>
+  <li>✅ "写一篇300字的科普文章，介绍家猫的驯化历史，面向小学生读者"</li>
+</ul>
+
+<h3>2. 使用分隔符</h3>
+<p>用引号、XML 标签或Markdown代码块区分不同部分。</p>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">请总结以下文章：
+
+&lt;article&gt;
+[文章内容...]
+&lt;/article&gt;
+
+要求：
+- 总结长度不超过100字
+- 突出核心观点
+- 使用 bullet points 格式</pre>
+
+<h3>3. 指定输出格式</h3>
+<pre style="background: #f8f8f8; padding: 10px; border-radius: 4px;">请以以下JSON格式输出：
+{
+  "title": "文章标题",
+  "summary": "内容摘要",
+  "keywords": ["关键词1", "关键词2", "关键词3"],
+  "sentiment": "positive/negative/neutral"
+}</pre>
+
+<h3>4. 设置约束条件</h3>
+<ul>
+  <li>长度限制（"控制在200字以内"）</li>
+  <li>风格要求（"使用专业但易懂的语言"）</li>
+  <li>内容边界（"不要提及竞争对手"）</li>
+</ul>
+
+<h3>5. 迭代优化</h3>
+<p>提示工程是迭代过程：</p>
+<ol>
+  <li>编写初始提示</li>
+  <li>测试输出结果</li>
+  <li>分析不足之处</li>
+  <li>调整提示词</li>
+  <li>重复直到满意</li>
+</ol>
+
+<h2>常见应用场景</h2>
+
+<h3>内容创作</h3>
+<ul>
+  <li>撰写文章、博客、营销文案</li>
+  <li>生成社交媒体内容</li>
+  <li>创作故事和诗歌</li>
+</ul>
+
+<h3>代码辅助</h3>
+<ul>
+  <li>代码生成与补全</li>
+  <li>代码审查与优化建议</li>
+  <li>算法解释与教学</li>
+</ul>
+
+<h3>数据分析</h3>
+<ul>
+  <li>数据清洗与转换</li>
+  <li>生成分析洞察</li>
+  <li>创建可视化描述</li>
+</ul>
+
+<h3>客服与对话</h3>
+<ul>
+  <li>设计对话流程</li>
+  <li>情感分析与回复</li>
+  <li>多轮对话管理</li>
+</ul>
+
+<h2>工具推荐</h2>
+<ul>
+  <li><strong>LangChain</strong>：提示模板管理与链式调用</li>
+  <li><strong>Promptfoo</strong>：提示测试与评估</li>
+  <li><strong>OpenAI Playground</strong>：快速实验和调试</li>
+  <li><strong>Weights & Biases Prompts</strong>：提示版本管理</li>
+</ul>
+
+<p>提示工程是一门实践性很强的技能，需要不断尝试和总结。随着大语言模型能力的提升，掌握提示工程将成为 AI 时代的重要竞争力。</p>

@@ -36,9 +36,53 @@ export const domains: Domain[] = [
     icon: "monitor",
     order: 5,
   },
+  {
+    slug: "ai",
+    title: "人工智能",
+    description: "AI 技术探索，涵盖大语言模型、机器学习、提示工程与 AI 应用开发",
+    icon: "brain",
+    order: 6,
+  },
 ];
 
 export const categoriesByDomain: Record<string, Category[]> = {
+  "ai": [
+    {
+      slug: "llm",
+      title: "大语言模型",
+      description: "LLM 原理、微调与部署实践",
+      order: 1,
+      domainSlug: "ai",
+    },
+    {
+      slug: "machine-learning",
+      title: "机器学习",
+      description: "机器学习算法与理论基础",
+      order: 2,
+      domainSlug: "ai",
+    },
+    {
+      slug: "prompt-engineering",
+      title: "提示工程",
+      description: "Prompt 设计技巧与最佳实践",
+      order: 3,
+      domainSlug: "ai",
+    },
+    {
+      slug: "ai-application",
+      title: "AI 应用开发",
+      description: "基于 AI 的应用构建与工程化",
+      order: 4,
+      domainSlug: "ai",
+    },
+    {
+      slug: "multimodal-ai",
+      title: "多模态 AI",
+      description: "图像、语音、视频等多模态技术",
+      order: 5,
+      domainSlug: "ai",
+    },
+  ],
   "frontend-development": [
     {
       slug: "html",

@@ -1,9 +1,8 @@
 import fs from "fs";
 import path from "path";
-import matter from "gray-matter";
 import { domains, getCategories } from "../src/lib/domains";
 
-const CONTENT_DIR = path.join(process.cwd(), "content");
+const ARTICLES_DIR = path.join(process.cwd(), "articles");
 const OUTPUT_FILE = path.join(process.cwd(), "src/lib/static-content.ts");
 
 interface ArticleData {
@@ -20,32 +19,109 @@ interface ArticleData {
   content: string;
 }
 
-function readMdxFiles(dirPath: string): { slug: string; raw: string }[] {
+/**
+ * 从 HTML 内容中提取标题（第一个 h1 标签）
+ */
+function extractTitle(html: string): string | null {
+  const h1Match = html.match(/<h1[^>]*>(.*?)<\/h1>/i);
+  return h1Match ? h1Match[1].replace(/<[^>]+>/g, "").trim() : null;
+}
+
+/**
+ * 从 HTML 内容中提取摘要（第一段文字，去除 HTML 标签）
+ */
+function extractSummary(html: string): string {
+  // 移除 script 和 style 标签及其内容
+  const cleanedHtml = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "");
+  
+  // 查找第一个段落或第一段文本
+  const pMatch = cleanedHtml.match(/<p[^>]*>(.*?)<\/p>/i);
+  if (pMatch) {
+    return pMatch[1].replace(/<[^>]+>/g, "").trim().substring(0, 200);
+  }
+  
+  // 如果没有 p 标签，尝试获取 h1 后的文本
+  const textMatch = cleanedHtml.match(/<h1[^>]*>.*?<\/h1>\s*(.*?)(?:<|$)/i);
+  if (textMatch) {
+    return textMatch[1].replace(/<[^>]+>/g, "").trim().substring(0, 200);
+  }
+  
+  return "";
+}
+
+/**
+ * 从文件名生成 slug
+ */
+function slugify(filename: string): string {
+  return filename.replace(/\.html$/, "");
+}
+
+/**
+ * 读取 HTML 文件
+ */
+function readHtmlFiles(dirPath: string): { slug: string; content: string; filePath: string }[] {
   if (!fs.existsSync(dirPath)) return [];
-  const files: { slug: string; raw: string }[] = [];
+  const files: { slug: string; content: string; filePath: string }[] = [];
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  
   for (const entry of entries) {
-    if (
-      entry.isFile() &&
-      entry.name.endsWith(".mdx") &&
-      entry.name !== "_intro.mdx"
-    ) {
-      const slug = entry.name.replace(/\.mdx$/, "");
-      const raw = fs.readFileSync(path.join(dirPath, entry.name), "utf-8");
-      files.push({ slug, raw });
+    if (entry.isFile() && entry.name.endsWith(".html")) {
+      const filePath = path.join(dirPath, entry.name);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const slug = slugify(entry.name);
+      files.push({ slug, content, filePath });
     }
   }
+  
   return files;
 }
 
-function readIntroFile(
-  dirPath: string
-): { raw: string; content: string; data: Record<string, any> } | null {
-  const introPath = path.join(dirPath, "_intro.mdx");
-  if (!fs.existsSync(introPath)) return null;
-  const raw = fs.readFileSync(introPath, "utf-8");
-  const { data, content } = matter(raw);
-  return { raw, content, data };
+/**
+ * 获取文件修改时间作为日期
+ */
+function getFileDate(filePath: string): string {
+  try {
+    const stats = fs.statSync(filePath);
+    return stats.mtime.toISOString().split("T")[0];
+  } catch {
+    return new Date().toISOString().split("T")[0];
+  }
+}
+
+/**
+ * 根据分类推断 group
+ */
+function inferGroup(category: string): string {
+  const groupMap: Record<string, string> = {
+    "llm": "大语言模型",
+    "machine-learning": "机器学习",
+    "prompt-engineering": "提示工程",
+    "ai-application": "AI 应用",
+    "multimodal-ai": "多模态 AI",
+  };
+  return groupMap[category] || "未分类";
+}
+
+/**
+ * 根据分类生成标签
+ */
+function inferTags(category: string, title: string): string[] {
+  const baseTags: Record<string, string[]> = {
+    "llm": ["llm", "大模型"],
+    "machine-learning": ["ml", "机器学习"],
+    "prompt-engineering": ["prompt", "提示工程"],
+    "ai-application": ["ai", "应用开发"],
+    "multimodal-ai": ["multimodal", "多模态"],
+  };
+  
+  const tags = baseTags[category] || ["ai"];
+  
+  // 从标题中提取关键词
+  if (title.includes("Agent")) tags.push("agent");
+  if (title.includes("微调")) tags.push("fine-tuning");
+  if (title.includes("GPT")) tags.push("gpt");
+  
+  return [...new Set(tags)]; // 去重
 }
 
 function main() {
@@ -57,40 +133,34 @@ function main() {
     const categories = getCategories(domain.slug);
     
     for (const cat of categories) {
-      const catDir = path.join(CONTENT_DIR, domain.slug, cat.slug);
+      const catDir = path.join(ARTICLES_DIR, domain.slug, cat.slug);
       
-      // Read intro file
-      const intro = readIntroFile(catDir);
-      if (intro) {
-        intros[domain.slug][cat.slug] = {
-          content: intro.content,
-          title: intro.data.title || `${cat.slug} 概览`,
-          summary: intro.data.summary || "",
-        };
-      }
+      // 读取该分类下的 HTML 文章
+      const files = readHtmlFiles(catDir);
       
-      // Read articles
-      const files = readMdxFiles(catDir);
       for (const file of files) {
-        const { data, content } = matter(file.raw);
-        if (data.draft === true) continue;
+        const title = extractTitle(file.content) || file.slug;
+        const summary = extractSummary(file.content);
+        const date = getFileDate(file.filePath);
         
         articles.push({
           slug: file.slug,
           domain: domain.slug,
           category: cat.slug,
-          title: data.title || file.slug,
-          date: data.date || "1970-01-01",
-          updated: data.updated,
-          summary: data.summary || "",
-          tags: data.tags || [],
-          group: data.group || "未分类",
-          draft: data.draft || false,
-          content,
+          title,
+          date,
+          summary,
+          tags: inferTags(cat.slug, title),
+          group: inferGroup(cat.slug),
+          draft: false,
+          content: file.content,
         });
       }
     }
   }
+
+  // 按日期排序
+  articles.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Generate static content file
   const fileContent = `// Auto-generated static content registry
@@ -168,6 +238,12 @@ export function getDomainWithCategories(domainSlug: string) {
   fs.writeFileSync(OUTPUT_FILE, fileContent, "utf-8");
   console.log(`Generated static registry with ${articles.length} articles`);
   console.log(`Output: ${OUTPUT_FILE}`);
+  
+  // 打印生成的文章列表
+  console.log("\nGenerated articles:");
+  for (const article of articles) {
+    console.log(`  - [${article.domain}/${article.category}] ${article.title} (${article.slug})`);
+  }
 }
 
 main();

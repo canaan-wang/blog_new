@@ -1,0 +1,204 @@
+<h1>机器学习基础概述</h1>
+<p>机器学习（Machine Learning）是人工智能的核心分支，使计算机能够从数据中自动学习规律并做出预测或决策，而无需显式编程。</p>
+
+<h2>什么是机器学习</h2>
+<p>机器学习是一种数据驱动的方法，通过算法从经验（数据）中学习模式，并利用这些模式对新数据进行预测或决策。</p>
+
+<h3>与传统编程的区别</h3>
+<table>
+  <tr><th>传统编程</th><th>机器学习</th></tr>
+  <tr><td>人工定义规则和逻辑</td><td>从数据中自动学习规则</td></tr>
+  <tr><td>适用于规则明确的任务</td><td>适用于模式复杂、规则难以描述的任务</td></tr>
+  <tr><td>规则修改需要重写代码</td><td>通过新数据重新训练即可更新模型</td></tr>
+</table>
+
+<h2>机器学习的主要类型</h2>
+
+<h3>监督学习（Supervised Learning）</h3>
+<p>使用带有标签的数据进行训练，学习输入到输出的映射关系。</p>
+
+<h4>分类（Classification）</h4>
+<p>预测离散类别标签：</p>
+<ul>
+  <li><strong>二分类</strong>：垃圾邮件检测（是/否）、疾病诊断（阳性/阴性）</li>
+  <li><strong>多分类</strong>：图像识别（猫/狗/鸟）、新闻分类（体育/科技/娱乐）</li>
+</ul>
+
+<h4>回归（Regression）</h4>
+<p>预测连续数值：</p>
+<ul>
+  <li>房价预测</li>
+  <li>股票价格预测</li>
+  <li>温度预测</li>
+</ul>
+
+<h4>常用算法</h4>
+<ul>
+  <li>线性回归（Linear Regression）</li>
+  <li>逻辑回归（Logistic Regression）</li>
+  <li>决策树（Decision Tree）</li>
+  <li>随机森林（Random Forest）</li>
+  <li>支持向量机（SVM）</li>
+  <li>神经网络（Neural Networks）</li>
+</ul>
+
+<h3>无监督学习（Unsupervised Learning）</h3>
+<p>处理没有标签的数据，发现数据的内在结构和模式。</p>
+
+<h4>聚类（Clustering）</h4>
+<p>将数据分组，使组内相似度高，组间相似度低：</p>
+<ul>
+  <li>客户细分</li>
+  <li>文档主题发现</li>
+  <li>图像分割</li>
+</ul>
+
+<h4>降维（Dimensionality Reduction）</h4>
+<p>减少数据特征数量，同时保留重要信息：</p>
+<ul>
+  <li>数据可视化</li>
+  <li>特征压缩</li>
+  <li>降噪</li>
+</ul>
+
+<h4>常用算法</h4>
+<ul>
+  <li>K-Means 聚类</li>
+  <li>层次聚类（Hierarchical Clustering）</li>
+  <li>主成分分析（PCA）</li>
+  <li>t-SNE</li>
+  <li>自编码器（Autoencoder）</li>
+</ul>
+
+<h3>强化学习（Reinforcement Learning）</h3>
+<p>通过与环境交互学习最优行为策略，以最大化累积奖励。</p>
+
+<h4>核心概念</h4>
+<ul>
+  <li><strong>智能体（Agent）</strong>：执行动作的决策者</li>
+  <li><strong>环境（Environment）</strong>：智能体所处的外部系统</li>
+  <li><strong>状态（State）</strong>：环境的当前情况</li>
+  <li><strong>动作（Action）</strong>：智能体可执行的操作</li>
+  <li><strong>奖励（Reward）</strong>：环境对动作的反馈</li>
+</ul>
+
+<h4>应用场景</h4>
+<ul>
+  <li>游戏 AI（AlphaGo、OpenAI Five）</li>
+  <li>机器人控制</li>
+  <li>自动驾驶</li>
+  <li>推荐系统</li>
+  <li>资源调度</li>
+</ul>
+
+<h2>机器学习工作流程</h2>
+
+<h3>1. 问题定义</h3>
+<ul>
+  <li>明确业务目标和评估指标</li>
+  <li>确定问题类型（分类/回归/聚类等）</li>
+  <li>评估可行性和数据需求</li>
+</ul>
+
+<h3>2. 数据收集与准备</h3>
+<h4>数据收集</h4>
+<ul>
+  <li>内部数据库</li>
+  <li>公开数据集</li>
+  <li>网络爬虫</li>
+  <li>人工标注</li>
+</ul>
+
+<h4>数据清洗</h4>
+<ul>
+  <li>处理缺失值（删除/填充/插值）</li>
+  <li>处理异常值</li>
+  <li>去除重复数据</li>
+  <li>纠正数据错误</li>
+</ul>
+
+<h3>3. 特征工程</h3>
+<p>将原始数据转换为适合机器学习模型的特征。</p>
+
+<h4>特征类型</h4>
+<ul>
+  <li><strong>数值特征</strong>：年龄、收入、温度</li>
+  <li><strong>类别特征</strong>：性别、颜色、城市</li>
+  <li><strong>文本特征</strong>：评论、文章、聊天记录</li>
+  <li><strong>时间特征</strong>：日期、时间戳</li>
+</ul>
+
+<h4>特征处理技术</h4>
+<ul>
+  <li><strong>归一化/标准化</strong>：将数值缩放到统一范围</li>
+  <li><strong>独热编码（One-Hot Encoding）</strong>：将类别变量转换为数值</li>
+  <li><strong>特征选择</strong>：保留最相关的特征</li>
+  <li><strong>特征构造</strong>：基于现有特征创建新特征</li>
+</ul>
+
+<h3>4. 模型选择与训练</h3>
+<ul>
+  <li>根据问题类型选择算法</li>
+  <li>划分训练集、验证集、测试集</li>
+  <li>训练模型并调优超参数</li>
+  <li>交叉验证评估模型稳定性</li>
+</ul>
+
+<h3>5. 模型评估</h3>
+
+<h4>分类任务指标</h4>
+<ul>
+  <li><strong>准确率（Accuracy）</strong>：正确预测的比例</li>
+  <li><strong>精确率（Precision）</strong>：预测为正类中实际为正类的比例</li>
+  <li><strong>召回率（Recall）</strong>：实际为正类中被正确预测的比例</li>
+  <li><strong>F1 分数</strong>：精确率和召回率的调和平均</li>
+  <li><strong>AUC-ROC</strong>：ROC 曲线下面积</li>
+</ul>
+
+<h4>回归任务指标</h4>
+<ul>
+  <li><strong>均方误差（MSE）</strong></li>
+  <li><strong>均方根误差（RMSE）</strong></li>
+  <li><strong>平均绝对误差（MAE）</strong></li>
+  <li><strong>R² 分数</strong></li>
+</ul>
+
+<h3>6. 模型部署与监控</h3>
+<ul>
+  <li>将模型部署到生产环境</li>
+  <li>设置监控和日志</li>
+  <li>检测模型漂移（Data Drift）</li>
+  <li>定期重新训练模型</li>
+</ul>
+
+<h2>常用工具与框架</h2>
+
+<h3>Python 生态</h3>
+<ul>
+  <li><strong>Scikit-learn</strong>：经典机器学习算法</li>
+  <li><strong>TensorFlow</strong>：Google 的深度学习框架</li>
+  <li><strong>PyTorch</strong>：Facebook 的深度学习框架</li>
+  <li><strong>XGBoost/LightGBM/CatBoost</strong>：梯度提升树</li>
+  <li><strong>Pandas</strong>：数据处理</li>
+  <li><strong>NumPy</strong>：数值计算</li>
+  <li><strong>Matplotlib/Seaborn</strong>：数据可视化</li>
+</ul>
+
+<h3>云平台</h3>
+<ul>
+  <li>AWS SageMaker</li>
+  <li>Google Cloud AI Platform</li>
+  <li>Azure Machine Learning</li>
+  <li>阿里云 PAI</li>
+</ul>
+
+<h2>机器学习与大语言模型的关系</h2>
+<p>大语言模型（LLM）是机器学习，特别是深度学习在自然语言处理领域的重大突破：</p>
+<ul>
+  <li>基于 Transformer 深度学习架构</li>
+  <li>使用大规模无监督预训练</li>
+  <li>通过监督微调（SFT）和人类反馈强化学习（RLHF）对齐人类意图</li>
+  <li>展现出强大的涌现能力和通用性</li>
+</ul>
+
+<p>理解传统机器学习的基础概念，有助于更好地应用和优化大语言模型。</p>

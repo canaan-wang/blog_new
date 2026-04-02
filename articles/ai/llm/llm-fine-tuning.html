@@ -1,0 +1,194 @@
+<h1>大语言模型微调（Fine-tuning）实战</h1>
+<p>微调是将预训练的大语言模型适配到特定下游任务的关键技术。通过微调，可以让通用模型在特定领域展现出专业级的性能。</p>
+
+<h2>为什么需要微调</h2>
+
+<h3>预训练模型的局限性</h3>
+<ul>
+  <li><strong>通用性强但专业性弱</strong>：预训练模型知识广泛但不够深入</li>
+  <li><strong>输出格式不可控</strong>：难以保证特定格式的输出</li>
+  <li><strong>领域知识不足</strong>：对特定行业的术语和规则理解有限</li>
+  <li><strong>对齐问题</strong>：模型行为可能与人类期望不一致</li>
+</ul>
+
+<h3>微调的优势</h3>
+<ul>
+  <li>提升特定任务的准确率和稳定性</li>
+  <li>规范输出格式和风格</li>
+  <li>注入领域专业知识</li>
+  <li>减少对提示工程的依赖</li>
+</ul>
+
+<h2>微调方法分类</h2>
+
+<h3>全参数微调（Full Fine-tuning）</h3>
+<p>更新模型的所有参数，效果最佳但计算成本最高。</p>
+<ul>
+  <li><strong>优点</strong>：性能上限高，适配能力强</li>
+  <li><strong>缺点</strong>：需要大量显存，训练时间长，容易过拟合</li>
+  <li><strong>适用</strong>：数据充足、算力充沛的场景</li>
+</ul>
+
+<h3>参数高效微调（PEFT）</h3>
+<p>只更新少量参数，大幅降低训练成本。</p>
+
+<h4>LoRA（Low-Rank Adaptation）</h4>
+<p>在原始权重矩阵旁添加低秩矩阵进行训练：</p>
+<pre><code>W = W_0 + BA</code></pre>
+<p>其中 W_0 是冻结的预训练权重，BA 是可训练的低秩矩阵。</p>
+<ul>
+  <li>可训练参数量减少至 0.1% ~ 1%</li>
+  <li>推理时可以合并权重，零额外开销</li>
+  <li>支持多任务切换（切换 LoRA 适配器）</li>
+</ul>
+
+<h4>QLoRA</h4>
+<p>结合量化和 LoRA 的进一步优化：</p>
+<ul>
+  <li>4-bit 量化基座模型</li>
+  <li>分页优化器处理显存峰值</li>
+  <li>单卡可微调 65B 参数模型</li>
+</ul>
+
+<h4>Prompt Tuning 和 Prefix Tuning</h4>
+<ul>
+  <li><strong>Prompt Tuning</strong>：学习软提示（Soft Prompt）</li>
+  <li><strong>Prefix Tuning</strong>：在每一层添加可训练前缀</li>
+</ul>
+
+<h2>微调实战流程</h2>
+
+<h3>1. 数据准备</h3>
+<p>高质量的数据是微调成功的关键：</p>
+
+<h4>数据格式（Instruction Fine-tuning）</h4>
+<pre><code>{
+  "instruction": "将以下中文翻译成英文",
+  "input": "人工智能正在改变世界",
+  "output": "Artificial intelligence is changing the world."
+}</code></pre>
+
+<h4>数据清洗要点</h4>
+<ul>
+  <li>去除重复和低质量样本</li>
+  <li>平衡不同类别的数据分布</li>
+  <li>确保输入输出格式一致性</li>
+  <li>添加适当的系统提示词</li>
+</ul>
+
+<h3>2. 环境配置</h3>
+
+<h4>使用 Hugging Face Transformers</h4>
+<pre><code>pip install transformers datasets peft accelerate bitsandbytes</code></pre>
+
+<h4>使用 LLaMA-Factory（推荐）</h4>
+<pre><code>git clone https://github.com/hiyouga/LLaMA-Factory.git
+cd LLaMA-Factory
+pip install -e ".[torch,metrics]"</code></pre>
+
+<h3>3. LoRA 微调代码示例</h3>
+<pre><code>from peft import LoraConfig, get_peft_model, TaskType
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from trl import SFTTrainer
+
+# 加载基座模型
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf",
+    load_in_4bit=True,  # 4-bit 量化
+    device_map="auto"
+)
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+
+# LoRA 配置
+lora_config = LoraConfig(
+    r=16,                    # 低秩维度
+    lora_alpha=32,           # 缩放参数
+    target_modules=["q_proj", "v_proj"],  # 目标模块
+    lora_dropout=0.05,
+    bias="none",
+    task_type=TaskType.CAUSAL_LM
+)
+
+# 应用 LoRA
+model = get_peft_model(model, lora_config)
+
+# 训练参数
+training_args = TrainingArguments(
+    output_dir="./results",
+    num_train_epochs=3,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=4,
+    learning_rate=2e-4,
+    fp16=True,
+    save_steps=100,
+    logging_steps=10
+)
+
+# 开始训练
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    args=training_args,
+    train_dataset=dataset,
+    dataset_text_field="text"
+)
+trainer.train()</code></pre>
+
+<h3>4. 模型评估</h3>
+<ul>
+  <li><strong>自动评估</strong>：BLEU、ROUGE、Perplexity 等指标</li>
+  <li><strong>人工评估</strong>：相关性、流畅性、安全性</li>
+  <li><strong>A/B 测试</strong>：对比微调前后的效果</li>
+</ul>
+
+<h3>5. 模型部署</h3>
+<pre><code># 合并 LoRA 权重
+model = model.merge_and_unload()
+
+# 保存模型
+model.save_pretrained("./fine_tuned_model")
+tokenizer.save_pretrained("./fine_tuned_model")</code></pre>
+
+<h2>微调最佳实践</h2>
+
+<h3>数据层面</h3>
+<ul>
+  <li>数据质量优于数量，1000 条高质量数据 > 10000 条低质量数据</li>
+  <li>保持数据分布与真实场景一致</li>
+  <li>添加多样化的示例，避免模式过拟合</li>
+</ul>
+
+<h3>训练层面</h3>
+<ul>
+  <li>学习率通常设置为预训练的 1/10 到 1/100</li>
+  <li>使用 Warmup 策略稳定训练初期</li>
+  <li>监控验证集损失，及早发现过拟合</li>
+  <li>保存多个 checkpoint，选择最佳模型</li>
+</ul>
+
+<h3>超参数选择</h3>
+<table>
+  <tr><th>参数</th><th>推荐值</th><th>说明</th></tr>
+  <tr><td>LoRA r</td><td>8-64</td><td>任务越复杂，r 越大</td></tr>
+  <tr><td>lora_alpha</td><td>16-128</td><td>通常为 2*r</td></tr>
+  <tr><td>学习率</td><td>1e-4 ~ 5e-4</td><td>从 2e-4 开始尝试</td></tr>
+  <tr><td>Batch Size</td><td>4-32</td><td>根据显存调整</td></tr>
+  <tr><td>Epochs</td><td>1-5</td><td>早停防止过拟合</td></tr>
+</table>
+
+<h2>常见应用场景</h2>
+
+<h3>垂直领域问答</h3>
+<p>医疗、法律、金融等领域的专业问答系统。</p>
+
+<h3>代码生成</h3>
+<p>针对特定编程语言或框架的代码补全。</p>
+
+<h3>风格迁移</h3>
+<p>让模型学会特定的写作风格或语气。</p>
+
+<h3>工具调用</h3>
+<p>训练模型正确调用外部 API 和工具。</p>
+
+<h2>总结</h2>
+<p>大语言模型微调是连接通用 AI 能力与特定业务需求的桥梁。通过 LoRA 等参数高效微调技术，即使是资源有限的团队也能在消费级显卡上完成高质量的模型定制。关键在于理解业务需求、准备高质量数据、选择合适的微调策略。</p>

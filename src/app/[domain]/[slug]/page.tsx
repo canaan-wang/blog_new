@@ -1,11 +1,6 @@
 import { notFound } from "next/navigation";
 import { Calendar, Clock, Tag } from "lucide-react";
-import { MDXRemote } from "next-mdx-remote/rsc";
-import remarkGfm from "remark-gfm";
-import rehypeSlug from "rehype-slug";
-import rehypePrettyCode from "rehype-pretty-code";
 import { getArticleBySlug, getAllArticleSlugs } from "@/lib/content";
-import { getMDXComponents } from "@/components/article/MDXComponents";
 
 export async function generateStaticParams() {
   const slugs = await getAllArticleSlugs();
@@ -34,8 +29,6 @@ export default async function ArticlePage({
   const { domain, slug } = await params;
   const article = await getArticleBySlug(domain, slug);
   if (!article) notFound();
-
-  const components = getMDXComponents();
 
   return (
     <article className="mx-auto w-full">
@@ -72,28 +65,11 @@ export default async function ArticlePage({
         )}
       </header>
 
-      {/* Article Content */}
-      <div className="prose prose-lg max-w-none">
-        <MDXRemote
-          source={article.content}
-          components={components}
-          options={{
-            mdxOptions: {
-              remarkPlugins: [remarkGfm],
-              rehypePlugins: [
-                rehypeSlug,
-                [
-                  rehypePrettyCode,
-                  {
-                    theme: "monokai",
-                    keepBackground: true,
-                  },
-                ],
-              ],
-            },
-          }}
-        />
-      </div>
+      {/* Article Content - HTML Rendering */}
+      <div 
+        className="prose prose-lg max-w-none article-html-content"
+        dangerouslySetInnerHTML={{ __html: article.content }}
+      />
     </article>
   );
 }
