@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
@@ -7,9 +7,10 @@ import rehypePrettyCode from "rehype-pretty-code";
 import {
   getDomainWithCategories,
   getCategoryIntro,
+  getArticlesByCategory,
 } from "@/lib/content";
 import { getMDXComponents } from "@/components/article/MDXComponents";
-import { domains } from "@/lib/domains";
+import { domains, getCategories, getGroups } from "@/lib/domains";
 import CategoryContent from "./CategoryContent";
 
 export async function generateStaticParams() {
@@ -38,6 +39,31 @@ export default async function DomainPage({
   const { domain } = await params;
   const data = await getDomainWithCategories(domain);
   if (!data) notFound();
+
+  // 找到第一个分类
+  const categories = getCategories(domain);
+  if (categories.length > 0) {
+    const firstCategory = categories[0];
+    const articles = await getArticlesByCategory(domain, firstCategory.slug);
+    
+    // 按分组排序，overview 在最前面
+    const groups = getGroups(firstCategory.slug);
+    
+    // 找到 overview 分组的文章
+    const overviewGroup = groups.find(g => g.slug === "overview");
+    if (overviewGroup) {
+      const overviewArticles = articles.filter(a => a.group === "overview");
+      if (overviewArticles.length > 0) {
+        // 跳转到 overview 的第一篇文章
+        redirect(`/${domain}/${overviewArticles[0].slug}`);
+      }
+    }
+    
+    // 如果没有 overview，跳转到该分类的第一篇文章
+    if (articles.length > 0) {
+      redirect(`/${domain}/${articles[0].slug}`);
+    }
+  }
 
   const components = getMDXComponents();
 

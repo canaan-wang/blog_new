@@ -5,24 +5,36 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useState, useMemo, Suspense } from "react";
 import { ChevronRight, FileText, BookOpen, Menu, X } from "lucide-react";
 import type { SidebarData, ArticleMeta } from "@/types";
+import { getGroups, getGroupTitle } from "@/lib/domains";
 
 interface SidebarProps {
   data: SidebarData;
 }
 
 function groupArticles(
-  articles: ArticleMeta[]
-): { group: string; articles: ArticleMeta[] }[] {
+  articles: ArticleMeta[],
+  categorySlug: string
+): { group: string; groupTitle: string; order: number; articles: ArticleMeta[] }[] {
+  const groupConfigs = getGroups(categorySlug);
   const map = new Map<string, ArticleMeta[]>();
+  
   for (const a of articles) {
     const g = a.group || "未分类";
     if (!map.has(g)) map.set(g, []);
     map.get(g)!.push(a);
   }
-  return Array.from(map.entries()).map(([group, articles]) => ({
-    group,
-    articles,
-  }));
+  
+  return Array.from(map.entries())
+    .map(([group, articles]) => {
+      const config = groupConfigs.find(g => g.slug === group);
+      return {
+        group,
+        groupTitle: config?.title || group,
+        order: config?.order || 999,
+        articles,
+      };
+    })
+    .sort((a, b) => a.order - b.order);
 }
 
 function SidebarInner({ data }: SidebarProps) {
@@ -54,7 +66,7 @@ function SidebarInner({ data }: SidebarProps) {
   }, [categoryFromUrl, categoryFromArticle, derivedCategory, userSelectedCategory]);
 
   const activeCat = data.categories.find((c) => c.slug === activeCategory);
-  const grouped = activeCat ? groupArticles(activeCat.articles) : [];
+  const grouped = activeCat ? groupArticles(activeCat.articles, activeCategory) : [];
 
   // Check if current page is an article page (has slug in pathname)
   // Article path: /{domain}/{slug}, Domain page: /{domain}
@@ -143,6 +155,7 @@ function SidebarInner({ data }: SidebarProps) {
                 <ArticleGroup
                   key={g.group}
                   groupName={g.group}
+                  groupTitle={g.groupTitle}
                   articles={g.articles}
                   domainSlug={data.domain.slug}
                   currentPath={pathname}
@@ -165,12 +178,14 @@ function SidebarInner({ data }: SidebarProps) {
 
 function ArticleGroup({
   groupName,
+  groupTitle,
   articles,
   domainSlug,
   currentPath,
   onArticleClick,
 }: {
   groupName: string;
+  groupTitle: string;
   articles: ArticleMeta[];
   domainSlug: string;
   currentPath: string;
@@ -188,7 +203,7 @@ function ArticleGroup({
           size={12}
           className={`shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
         />
-        <span>{groupName}</span>
+        <span>{groupTitle}</span>
         <span className="ml-auto text-[10px] font-normal text-muted">
           {articles.length}
         </span>

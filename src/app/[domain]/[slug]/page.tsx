@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Calendar, Clock, Tag } from "lucide-react";
+import { Calendar, Clock } from "lucide-react";
 import { getArticleBySlug, getAllArticleSlugs } from "@/lib/content";
 
 export async function generateStaticParams() {
@@ -50,19 +50,6 @@ export default async function ArticlePage({
             </span>
           )}
         </div>
-        {article.tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Tag size={14} className="text-muted" />
-            {article.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-bg-alt px-2.5 py-0.5 text-xs text-muted"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
       </header>
 
       {/* Article Content - HTML Rendering */}

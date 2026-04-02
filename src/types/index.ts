@@ -20,7 +20,6 @@ export interface ArticleMeta {
   date: string;
   updated?: string;
   summary: string;
-  tags: string[];
   category: string;
   domain: string;
   group: string;
