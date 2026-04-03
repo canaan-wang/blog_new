@@ -1,0 +1,149 @@
+<h1>Java Atomic 原子类</h1>
+
+<h2>一、简介</h2>
+<p>Atomic 包提供无锁的原子操作类，基于 CAS（Compare-And-Swap）实现，比 synchronized 性能更高。</p>
+
+<h2>二、基本类型原子类</h2>
+
+<pre><code class="language-java">import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+AtomicInteger counter = new AtomicInteger(0);
+
+// 原子操作
+int old = counter.getAndIncrement();   // i++
+int newVal = counter.incrementAndGet();  // ++i
+counter.addAndGet(5);                   // += 5
+counter.compareAndSet(0, 1);            // CAS：期望值0，更新值1</code></pre>
+
+<h2>三、数组类型原子类</h2>
+
+<pre><code class="language-java">import java.util.concurrent.atomic.AtomicIntegerArray;
+
+AtomicIntegerArray array = new AtomicIntegerArray(10);
+array.set(0, 100);
+array.incrementAndGet(0);
+int val = array.addAndGet(1, 5);</code></pre>
+
+<h2>四、引用类型原子类</h2>
+
+<pre><code class="language-java">import java.util.concurrent.atomic.AtomicReference;
+
+AtomicReference<User> userRef = new AtomicReference<>();
+userRef.set(new User("Alice"));
+
+// CAS 更新
+User old = userRef.get();
+User updated = new User("Bob");
+boolean success = userRef.compareAndSet(old, updated);
+
+// 带版本号的引用（ABA 问题解决）
+import java.util.concurrent.atomic.AtomicStampedReference;
+AtomicStampedReference<User> stampedRef = 
+    new AtomicStampedReference<>(user, 0);
+
+int[] stampHolder = new int[1];
+User current = stampedRef.get(stampHolder);
+int currentStamp = stampHolder[0];
+stampedRef.compareAndSet(current, newUser, currentStamp, currentStamp + 1);</code></pre>
+
+<h2>五、字段更新器</h2>
+
+<pre><code class="language-java">import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+
+public class User {
+    volatile int age;  // 必须是 volatile
+    
+    private static final AtomicIntegerFieldUpdater<User> ageUpdater =
+        AtomicIntegerFieldUpdater.newUpdater(User.class, "age");
+    
+    public void incrementAge() {
+        ageUpdater.incrementAndGet(this);
+    }
+}</code></pre>
+
+<h2>六、累加器（Java 8+）</h2>
+
+<pre><code class="language-java">import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.atomic.DoubleAdder;
+import java.util.concurrent.atomic.LongAccumulator;
+
+// 高并发计数场景，性能优于 AtomicLong
+LongAdder adder = new LongAdder();
+adder.increment();
+adder.add(10);
+long sum = adder.sum();
+
+// 累加器，支持自定义运算
+LongAccumulator accumulator = new LongAccumulator(Long::max, 0);
+accumulator.accumulate(100);
+accumulator.accumulate(50);  // 结果保持 100（max）</code></pre>
+
+<h2>七、性能对比</h2>
+
+<table>
+  <tr><th>场景</th><th>推荐方案</th></tr>
+  <tr><td>低竞争计数</td><td>AtomicLong</td></tr>
+  <tr><td>高竞争计数</td><td>LongAdder</td></tr>
+  <tr><td>单变量原子操作</td><td>AtomicInteger/AtomicLong</td></tr>
+  <tr><td>对象引用更新</td><td>AtomicReference</td></tr>
+  <tr><td>避免 ABA 问题</td><td>AtomicStampedReference</td></tr>
+</table>
+
+<h2>八、CAS 原理与问题</h2>
+
+<h3>ABA 问题</h3>
+<p>值从 A→B→A，CAS 认为未变化，但实际已变化。解决方案：</p>
+<ul>
+  <li>AtomicStampedReference：带版本号</li>
+  <li>AtomicMarkableReference：带标记位</li>
+</ul>
+
+<h3>自旋开销</h3>
+<p>CAS 失败会自旋重试，高竞争下消耗 CPU。LongAdder 通过分散热点解决。</p>
+
+<h2>九、使用示例</h2>
+
+<pre><code class="language-java">public class AtomicCounter {
+    private final LongAdder count = new LongAdder();
+    
+    public void increment() {
+        count.increment();
+    }
+    
+    public long get() {
+        return count.sum();
+    }
+}
+
+// 无锁栈
+public class LockFreeStack<T> {
+    private final AtomicReference<Node<T>> head = new AtomicReference<>();
+    
+    public void push(T value) {
+        Node<T> newNode = new Node<>(value);
+        Node<T> current;
+        do {
+            current = head.get();
+            newNode.next = current;
+        } while (!head.compareAndSet(current, newNode));
+    }
+    
+    public T pop() {
+        Node<T> current;
+        Node<T> next;
+        do {
+            current = head.get();
+            if (current == null) return null;
+            next = current.next;
+        } while (!head.compareAndSet(current, next));
+        return current.value;
+    }
+    
+    private static class Node<T> {
+        final T value;
+        Node<T> next;
+        Node(T value) { this.value = value; }
+    }
+}</code></pre>

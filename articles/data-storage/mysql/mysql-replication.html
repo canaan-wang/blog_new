@@ -1,0 +1,105 @@
+<h1>MySQL 主从复制</h1>
+
+<h2>一、复制原理</h2>
+
+<pre><code class="language-mermaid">graph LR
+    Master[Master] -->|binlog| IO[IO Thread]
+    IO -->|relay log| SQL[SQL Thread]
+    SQL --> Slave[Slave]</code></pre>
+
+<ol>
+  <li>Master 记录数据变更到 binlog</li>
+  <li>Slave 的 IO Thread 读取 binlog 写入 relay log</li>
+  <li>Slave 的 SQL Thread 重放 relay log</li>
+</ol>
+
+<h2>二、配置 Master</h2>
+
+<pre><code class="language-ini">[mysqld]
+server-id = 1
+log_bin = /var/lib/mysql/mysql-bin
+binlog_format = ROW
+expire_logs_days = 7
+max_binlog_size = 500M
+
+# 需要复制的数据库
+# binlog-do-db = mydb</code></pre>
+
+<pre><code class="language-sql">-- 创建复制用户
+CREATE USER 'repl'@'%' IDENTIFIED BY 'password';
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%';
+FLUSH PRIVILEGES;
+
+-- 查看 binlog 位置
+SHOW MASTER STATUS;
+-- +------------------+----------+--------------+
+-- | File             | Position | Binlog_Do_DB |
+-- +------------------+----------+--------------+
+-- | mysql-bin.000001 |      154 |              |
+-- +------------------+----------+--------------+</code></pre>
+
+<h2>三、配置 Slave</h2>
+
+<pre><code class="language-ini">[mysqld]
+server-id = 2
+relay_log = /var/lib/mysql/mysql-relay-bin
+read_only = 1</code></pre>
+
+<pre><code class="language-sql">-- 配置主库信息
+CHANGE MASTER TO
+    MASTER_HOST='master_host',
+    MASTER_USER='repl',
+    MASTER_PASSWORD='password',
+    MASTER_LOG_FILE='mysql-bin.000001',
+    MASTER_LOG_POS=154;
+
+-- 启动复制
+START SLAVE;
+
+-- 查看状态
+SHOW SLAVE STATUS\G;</code></pre>
+
+<h2>四、复制模式</h2>
+
+<table>
+  <tr><th>模式</th><th>说明</th></tr>
+  <tr><td>异步复制</td><td>Master 不等待 Slave 确认，性能最好</td></tr>
+  <tr><td>半同步复制</td><td>Master 等待至少一个 Slave 确认</td></tr>
+  <tr><td>组复制</td><td>多主复制，自动故障转移</td></tr>
+</table>
+
+<h2>五、GTID 复制</h2>
+
+<pre><code class="language-ini">[mysqld]
+gtid_mode = ON
+enforce_gtid_consistency = ON</code></pre>
+
+<pre><code class="language-sql">CHANGE MASTER TO
+    MASTER_HOST='master_host',
+    MASTER_USER='repl',
+    MASTER_PASSWORD='password',
+    MASTER_AUTO_POSITION=1;  -- 使用 GTID
+
+START SLAVE;</code></pre>
+
+<h2>六、常见问题</h2>
+
+<pre><code class="language-sql">-- 跳过错误（谨慎使用）
+STOP SLAVE;
+SET GLOBAL sql_slave_skip_counter = 1;
+START SLAVE;
+
+-- 重置复制
+STOP SLAVE;
+RESET SLAVE ALL;</code></pre>
+
+<h2>七、延迟复制</h2>
+
+<pre><code class="language-sql">-- 设置延迟1小时
+CHANGE MASTER TO MASTER_DELAY = 3600;
+START SLAVE;
+
+-- 用于误操作恢复
+STOP SLAVE SQL_THREAD;
+-- 找到误操作前的位置
+START SLAVE SQL_THREAD;</code></pre>

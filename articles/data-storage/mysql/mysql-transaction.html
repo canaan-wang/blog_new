@@ -1,0 +1,159 @@
+<h1>MySQL 事务与锁</h1>
+
+<h2>一、事务 ACID</h2>
+
+<table>
+  <tr><th>特性</th><th>说明</th></tr>
+  <tr><td>Atomicity（原子性）</td><td>要么全部成功，要么全部回滚</td></tr>
+  <tr><td>Consistency（一致性）</td><td>事务前后数据完整性约束不被破坏</td></tr>
+  <tr><td>Isolation（隔离性）</td><td>事务之间相互隔离</td></tr>
+  <tr><td>Durability（持久性）</td><td>事务提交后永久保存</td></tr>
+</table>
+
+<h2>二、事务控制</h2>
+
+<pre><code class="language-sql">-- 开启事务
+START TRANSACTION;
+-- 或
+BEGIN;
+
+-- DML 操作
+INSERT INTO account VALUES (1, 1000);
+UPDATE account SET balance = balance - 100 WHERE id = 1;
+
+-- 提交或回滚
+COMMIT;    -- 提交
+ROLLBACK;  -- 回滚
+
+-- 保存点
+SAVEPOINT sp1;
+ROLLBACK TO sp1;  -- 回滚到保存点</code></pre>
+
+<h2>三、隔离级别</h2>
+
+<table>
+  <tr><th>隔离级别</th><th>脏读</th><th>不可重复读</th><th>幻读</th></tr>
+  <tr><td>READ UNCOMMITTED</td><td>可能</td><td>可能</td><td>可能</td></tr>
+  <tr><td>READ COMMITTED</td><td>不可能</td><td>可能</td><td>可能</td></tr>
+  <tr><td>REPEATABLE READ（默认）</td><td>不可能</td><td>不可能</td><td>可能</td></tr>
+  <tr><td>SERIALIZABLE</td><td>不可能</td><td>不可能</td><td>不可能</td></tr>
+</table>
+
+<pre><code class="language-sql">-- 设置隔离级别
+SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+-- 查看当前隔离级别
+SELECT @@transaction_isolation;</code></pre>
+
+<h2>四、并发问题</h2>
+
+<pre><code class="language-mermaid">graph TD
+    subgraph "脏读"
+        T1[T1: UPDATE set balance=900] --> T2[T2: SELECT 读到 900]
+        T2 --> T3[T1: ROLLBACK]
+        style T2 fill:#f99
+    end
+    
+    subgraph "不可重复读"
+        T4[T1: SELECT 读到 1000] --> T5[T2: UPDATE set balance=900]
+        T5 --> T6[T1: SELECT 读到 900]
+        style T6 fill:#f99
+    end
+    
+    subgraph "幻读"
+        T7[T1: SELECT WHERE age>20<br>返回2条] --> T8[T2: INSERT age=25]
+        T8 --> T9[T1: SELECT WHERE age>20<br>返回3条]
+        style T9 fill:#f99
+    end</code></pre>
+
+<h2>五、锁机制</h2>
+
+<h3>锁类型</h3>
+<table>
+  <tr><th>锁</th><th>说明</th></tr>
+  <tr><td>共享锁（S）</td><td>SELECT ... LOCK IN SHARE MODE</td></tr>
+  <tr><td>排他锁（X）</td><td>SELECT ... FOR UPDATE / DML</td></tr>
+  <tr><td>意向共享锁（IS）</td><td>表级，表示事务将获取行级 S 锁</td></tr>
+  <tr><td>意向排他锁（IX）</td><td>表级，表示事务将获取行级 X 锁</td></tr>
+</table>
+
+<h3>锁粒度</h3>
+<pre><code class="language-sql">-- 行锁（InnoDB 默认）
+SELECT * FROM user WHERE id = 1 FOR UPDATE;
+
+-- 表锁（MyISAM 或显式锁定）
+LOCK TABLES user WRITE;
+UNLOCK TABLES;
+
+-- 间隙锁（Gap Lock）
+-- 防止幻读，锁定范围但不锁定记录本身
+SELECT * FROM user WHERE id > 5 AND id < 10 FOR UPDATE;</code></pre>
+
+<h2>六、MVCC 多版本并发控制</h2>
+
+<pre><code class="language-mermaid">graph LR
+    T1[事务1 ID=10] --> R1[读取<br>创建版本链]
+    T2[事务2 ID=20] --> U1[更新<br>创建新版本]
+    T3[事务3 ID=5] --> R2[读取<br>看到旧版本]
+    
+    DB[(数据页)] --> V1[版本1<br>创建者:10]
+    DB --> V2[版本2<br>创建者:20]</code></pre>
+
+<p>InnoDB 每行记录包含两个隐藏列：</p>
+<ul>
+  <li>DB_TRX_ID：创建该版本的事务 ID</li>
+  <li>DB_ROLL_PTR：回滚指针，指向 undo log</li>
+</ul>
+
+<h2>七、死锁处理</h2>
+
+<pre><code class="language-sql">-- 查看死锁日志
+SHOW ENGINE INNODB STATUS;
+
+-- 死锁检测（默认开启）
+innodb_deadlock_detect = ON
+
+-- 死锁超时
+innodb_lock_wait_timeout = 50</code></pre>
+
+<h3>死锁示例</h3>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant T1 as 事务1
+    participant T2 as 事务2
+    
+    T1->>DB: UPDATE A (加 X 锁)
+    T2->>DB: UPDATE B (加 X 锁)
+    T1->>DB: UPDATE B (等待 T2)
+    T2->>DB: UPDATE A (等待 T1)
+    Note over T1,T2: 死锁！
+    DB-->>T2: ERROR 1213: Deadlock found</code></pre>
+
+<h2>八、乐观锁 vs 悲观锁</h2>
+
+<table>
+  <tr><th>特性</th><th>悲观锁</th><th>乐观锁</th></tr>
+  <tr><td>机制</td><td>先获取锁</td><td>提交时检测冲突</td></tr>
+  <tr><td>SQL</td><td>SELECT FOR UPDATE</td><td>UPDATE + version 检查</td></tr>
+  <tr><td>适用</td><td>写多读少</td><td>读多写少</td></tr>
+  <tr><td>冲突</td><td>阻塞等待</td><td>重试/报错</td></tr>
+</table>
+
+<h3>乐观锁实现</h3>
+<pre><code class="language-sql">-- 添加版本号字段
+ALTER TABLE product ADD COLUMN version INT DEFAULT 0;
+
+-- 更新时检查版本
+UPDATE product 
+SET stock = stock - 1, version = version + 1 
+WHERE id = 1 AND version = 1;
+
+-- 影响行数为 0 表示冲突，需重试</code></pre>
+
+<h2>九、最佳实践</h2>
+<ul>
+  <li>事务尽量短小，减少锁持有时间</li>
+  <li>按固定顺序访问资源，避免死锁</li>
+  <li>使用 READ COMMITTED 减少锁竞争</li>
+  <li>热点数据考虑乐观锁或缓存</li>
+  <li>监控 innodb_row_lock_waits 指标</li>
+</ul>

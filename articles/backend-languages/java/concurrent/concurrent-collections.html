@@ -1,0 +1,41 @@
+<h1>Java 并发集合</h1>
+
+<h2>一、ConcurrentHashMap</h2>
+<pre><code class="language-java">// Java 8: CAS + synchronized
+ConcurrentHashMap<String, String> map = new ConcurrentHashMap<>();
+map.put("key", "value");
+map.computeIfAbsent("key2", k -> computeValue(k));</code></pre>
+
+<h2>二、CopyOnWriteArrayList</h2>
+<pre><code class="language-java">// 读多写少场景
+CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
+// 写时复制，读无锁</code></pre>
+
+<h2>三、BlockingQueue</h2>
+<table>
+  <tr><th>队列</th><th>特点</th></tr>
+  <tr><td>ArrayBlockingQueue</td><td>有界数组</td></tr>
+  <tr><td>LinkedBlockingQueue</td><td>可选有界链表</td></tr>
+  <tr><td>PriorityBlockingQueue</td><td>优先级</td></tr>
+  <tr><td>SynchronousQueue</td><td>直接传递</td></tr>
+  <tr><td>DelayQueue</td><td>延迟获取</td></tr>
+</table>
+
+<h2>四、生产者消费者示例</h2>
+<pre><code class="language-java">BlockingQueue<Task> queue = new LinkedBlockingQueue<>(100);
+
+// 生产者
+queue.put(task);      // 阻塞
+queue.offer(task, 1, TimeUnit.SECONDS);  // 超时
+
+// 消费者
+Task task = queue.take();    // 阻塞
+Task task = queue.poll(1, TimeUnit.SECONDS);  // 超时</code></pre>
+
+<h2>五、线程安全 Map 选择</h2>
+<table>
+  <tr><th>场景</th><th>推荐</th></tr>
+  <tr><td>高并发读写</td><td>ConcurrentHashMap</td></tr>
+  <tr><td>需要排序</td><td>ConcurrentSkipListMap</td></tr>
+  <tr><td>读多写少</td><td>Collections.synchronizedMap</td></tr>
+</table>

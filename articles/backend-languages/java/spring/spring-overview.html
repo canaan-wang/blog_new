@@ -1,0 +1,119 @@
+<h1>Spring Framework 概述</h1>
+
+<h2>一、Spring 是什么</h2>
+<p>Spring 是一个轻量级的 Java 开发框架，核心特性是 <strong>IoC（控制反转）</strong> 和 <strong>AOP（面向切面编程）</strong>，简化企业级应用开发。</p>
+
+<h2>二、核心特性</h2>
+
+<h3>1. IoC 容器</h3>
+<p>控制反转：对象创建和依赖注入由容器管理，降低耦合。</p>
+
+<pre><code class="language-java">// 传统方式
+Service service = new Service();
+service.setDao(new Dao());
+
+// Spring IoC
+@Service
+public class Service {
+    @Autowired
+    private Dao dao;  // 自动注入
+}</code></pre>
+
+<h3>2. AOP 面向切面编程</h3>
+<pre><code class="language-java">@Aspect
+@Component
+public class LoggingAspect {
+    @Before("execution(* com.service.*.*(..))")
+    public void logBefore(JoinPoint jp) {
+        System.out.println("Method called: " + jp.getSignature());
+    }
+}</code></pre>
+
+<h3>3. 数据访问</h3>
+<ul>
+  <li>JDBC 模板简化数据库操作</li>
+  <li>统一事务管理</li>
+  <li>集成 JPA、MyBatis</li>
+</ul>
+
+<h3>4. Spring MVC</h3>
+<pre><code class="language-java">@Controller
+public class UserController {
+    
+    @GetMapping("/users/{id}")
+    @ResponseBody
+    public User getUser(@PathVariable Long id) {
+        return userService.findById(id);
+    }
+}</code></pre>
+
+<h2>三、Spring 模块</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[Spring Framework] --> B[Core Container]
+    A --> C[AOP]
+    A --> D[Data Access]
+    A --> E[Web]
+    A --> F[Test]
+    
+    B --> B1[Beans]
+    B --> B2[Core]
+    B --> B3[Context]
+    B --> B4[SpEL]
+    
+    D --> D1[JDBC]
+    D --> D2[ORM]
+    D --> D3[Transaction]
+    
+    E --> E1[Servlet]
+    E --> E2[WebSocket]
+    E --> E3[WebFlux]</code></pre>
+
+<h2>四、Spring vs Spring Boot</h2>
+
+<table>
+  <tr><th>特性</th><th>Spring</th><th>Spring Boot</th></tr>
+  <tr><td>配置</td><td>大量 XML/注解配置</td><td>自动配置，约定大于配置</td></tr>
+  <tr><td>依赖管理</td><td>手动管理</td><td>Starter 简化</td></tr>
+  <tr><td>部署</td><td>外部容器</td><td>内嵌容器，可执行 jar</td></tr>
+  <tr><td>监控</td><td>需集成</td><td>内置 Actuator</td></tr>
+</table>
+
+<h2>五、Bean 生命周期</h2>
+
+<pre><code class="language-mermaid">graph LR
+    A[实例化] --> B[属性赋值]
+    B --> C[初始化前<br>@PostConstruct]
+    C --> D[InitializingBean]
+    D --> E[init-method]
+    E --> F[Bean就绪]
+    F --> G[销毁前<br>@PreDestroy]
+    G --> H[DisposableBean]
+    H --> I[destroy-method]</code></pre>
+
+<h2>六、Bean 作用域</h2>
+
+<table>
+  <tr><th>作用域</th><th>说明</th></tr>
+  <tr><td>singleton</td><td>默认，每个容器一个实例</td></tr>
+  <tr><td>prototype</td><td>每次请求创建新实例</td></tr>
+  <tr><td>request</td><td>HTTP 请求范围内</td></tr>
+  <tr><td>session</td><td>HTTP Session 范围内</td></tr>
+  <tr><td>application</td><td>ServletContext 范围内</td></tr>
+</table>
+
+<h2>七、常用注解</h2>
+
+<table>
+  <tr><th>注解</th><th>说明</th></tr>
+  <tr><td>@Component</td><td>通用组件</td></tr>
+  <tr><td>@Service</td><td>业务层</td></tr>
+  <tr><td>@Repository</td><td>数据层</td></tr>
+  <tr><td>@Controller</td><td>控制层</td></tr>
+  <tr><td>@Autowired</td><td>自动注入（按类型）</td></tr>
+  <tr><td>@Qualifier</td><td>指定 Bean 名称</td></tr>
+  <tr><td>@Value</td><td>注入配置值</td></tr>
+  <tr><td>@Configuration</td><td>配置类</td></tr>
+  <tr><td>@Bean</td><td>定义 Bean</td></tr>
+  <tr><td>@ComponentScan</td><td>扫描包路径</td></tr>
+</table>

@@ -1,0 +1,101 @@
+<h1>Nginx 基础</h1>
+
+<h2>一、Nginx 简介</h2>
+<p>Nginx 是高性能 HTTP 和反向代理服务器，支持负载均衡、缓存、SSL 等功能。</p>
+
+<h2>二、基本配置</h2>
+
+<pre><code class="language-nginx"># nginx.conf 结构
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+    use epoll;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+    
+    access_log /var/log/nginx/access.log main;
+    
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json;
+    
+    include /etc/nginx/conf.d/*.conf;
+}</code></pre>
+
+<h2>三、静态服务器</h2>
+
+<pre><code class="language-nginx">server {
+    listen 80;
+    server_name example.com;
+    
+    location / {
+        root /var/www/html;
+        index index.html index.htm;
+        try_files $uri $uri/ =404;
+    }
+    
+    location /images/ {
+        root /var/www/html;
+        expires 30d;
+        access_log off;
+    }
+}</code></pre>
+
+<h2>四、反向代理</h2>
+
+<pre><code class="language-nginx">server {
+    listen 80;
+    server_name api.example.com;
+    
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}</code></pre>
+
+<h2>五、负载均衡</h2>
+
+<pre><code class="language-nginx">upstream backend {
+    least_conn;                    # 最少连接
+    # ip_hash;                     # IP 哈希（会话保持）
+    
+    server 192.168.1.10:8080 weight=5;
+    server 192.168.1.11:8080 weight=5;
+    server 192.168.1.12:8080 backup;  # 备用
+}
+
+server {
+    location / {
+        proxy_pass http://backend;
+    }
+}</code></pre>
+
+<h2>六、常用命令</h2>
+
+<pre><code class="language-bash">nginx -t                    # 测试配置
+nginx -s reload             # 重载配置
+nginx -s stop               # 停止
+nginx -s quit               # 优雅退出</code></pre>

@@ -1,0 +1,160 @@
+<h1>Redis Stream 流</h1>
+
+<h2>一、Stream 简介</h2>
+<p>Redis 5.0 引入的日志型数据结构，支持消息持久化、消费者组和 ACK 确认，适合构建可靠消息队列。</p>
+
+<h2>二、基础命令</h2>
+
+<h3>添加消息</h3>
+<pre><code class="language-bash"># 自动生成 ID
+XADD mystream * sensor-id 1234 temperature 19.8
+
+# 指定 ID（时间戳-序列号）
+XADD mystream 1704067200000-0 name "Alice"
+
+# 设置最大长度
+XADD mystream MAXLEN ~ 1000 * field value</code></pre>
+
+<h3>读取消息</h3>
+<pre><code class="language-bash"># 范围查询
+XRANGE mystream - +              # 读取全部
+XRANGE mystream 1704067200000-0 +  COUNT 10  # 从指定 ID 开始，最多10条
+XREVRANGE mystream + - COUNT 10  # 倒序读取最新10条
+
+# 阻塞读取（消费者）
+XREAD BLOCK 0 STREAMS mystream $  # 阻塞等待新消息
+XREAD COUNT 5 STREAMS mystream 0  # 读取 5 条未确认消息</code></pre>
+
+<h2>三、消费者组</h2>
+
+<pre><code class="language-bash"># 创建消费者组（从开头消费）
+XGROUP CREATE mystream mygroup $
+
+# 创建消费者组（消费历史消息）
+XGROUP CREATE mystream mygroup 0
+
+# 消费者读取消息
+XREADGROUP GROUP mygroup consumer1 COUNT 5 STREAMS mystream >
+
+# 确认消息处理完成
+XACK mystream mygroup 1704067200000-0
+
+# 查看待处理消息
+XPENDING mystream mygroup</code></pre>
+
+<h2>四、Java 实现</h2>
+
+<pre><code class="language-java">// 添加消息
+jedis.xadd("mystream", StreamEntryID.NEW_ENTRY, 
+    Collections.singletonMap("temperature", "20.5"));
+
+// 消费者组消费
+Map<String, StreamEntryID> streams = new HashMap<>();
+streams.put("mystream", StreamEntryID.UNRECEIVED_ENTRY);
+
+List<Map.Entry<String, List<StreamEntry>>> result = 
+    jedis.xreadGroup("mygroup", "consumer1", 5, 0, false, streams);
+
+// 处理消息并确认
+for (StreamEntry entry : result.get(0).getValue()) {
+    process(entry.getFields());
+    jedis.xack("mystream", "mygroup", entry.getID());
+}</code></pre>
+
+<h2>五、Spring Data Redis Stream</h2>
+
+<pre><code class="language-java">@Configuration
+public class StreamConfig {
+    
+    @Bean
+    public Subscription subscription(RedisConnectionFactory factory) {
+        StreamMessageListenerContainer.StreamMessageListenerContainerOptions
+            <String, ObjectRecord<String, String>> options = 
+            StreamMessageListenerContainerOptions.builder()
+                .pollTimeout(Duration.ofSeconds(1))
+                .build();
+        
+        StreamMessageListenerContainer<String, ObjectRecord<String, String>>
+            container = StreamMessageListenerContainer.create(factory, options);
+        
+        Subscription subscription = container.receiveAutoAck(
+            Consumer.from("mygroup", "consumer-" + UUID.randomUUID()),
+            StreamOffset.create("mystream", ReadOffset.lastConsumed()),
+            message -> System.out.println("Received: " + message.getValue())
+        );
+        
+        container.start();
+        return subscription;
+    }
+}
+
+@Service
+public class StreamProducer {
+    @Autowired
+    private StringRedisTemplate template;
+    
+    public void send(String message) {
+        RecordId id = template.opsForStream()
+            .add(ObjectRecord.create("mystream", message));
+        System.out.println("Sent: " + id);
+    }
+}</code></pre>
+
+<h2>六、Stream vs List vs Pub/Sub</h2>
+
+<table>
+  <tr><th>特性</th><th>List</th><th>Pub/Sub</th><th>Stream</th></tr>
+  <tr><td>持久化</td><td>是</td><td>否</td><td>是</td></tr>
+  <tr><td>消费者组</td><td>否</td><td>否</td><td>是</td></tr>
+  <tr><td>消息确认</td><td>无</td><td>无</td><td>ACK</td></tr>
+  <tr><td>消息回溯</td><td>有限</td><td>无</td><td>完整历史</td></tr>
+  <tr><td>阻塞消费</td><td>有</td><td>有</td><td>有</td></tr>
+</table>
+
+<h2>七、架构示例</h2>
+
+<pre><code class="language-mermaid">graph LR
+    P[生产者] -->|XADD| S[Stream]
+    S -->|XREADGROUP| C1[消费者1]
+    S -->|XREADGROUP| C2[消费者2]
+    S -->|XREADGROUP| C3[消费者3]
+    
+    C1 -->|XACK| S
+    C2 -->|XACK| S
+    C3 -->|XACK| S</code></pre>
+
+<h2>八、消息处理模式</h2>
+
+<pre><code class="language-java">// 1. 至少一次投递 + 幂等处理
+public void process(StreamEntry entry) {
+    String id = entry.getID().toString();
+    if (processedSet.contains(id)) {
+        return;  // 已处理，幂等
+    }
+    // 处理业务
+    saveToDB(entry);
+    processedSet.add(id);
+    jedis.xack("stream", "group", entry.getID());
+}
+
+// 2. 死信队列处理
+public void checkPending() {
+    PendingEntriesResult pending = jedis.xpending(
+        "stream", "group", null, null, 100);
+    
+    for (PendingEntry entry : pending.getPendingEntries()) {
+        if (entry.getIdleTime() > 60000) {  // 超过60秒
+            // 转移到死信队列
+            claimToDLQ(entry);
+        }
+    }
+}</code></pre>
+
+<h2>九、注意事项</h2>
+<ul>
+  <li>合理设置 MAXLEN 控制内存使用</li>
+  <li>及时 ACK 避免消息堆积</li>
+  <li>处理 Pending 列表中的未确认消息</li>
+  <li>消费者故障时及时清理空消费者组</li>
+  <li>监控内存使用，设置合理的过期策略</li>
+</ul>

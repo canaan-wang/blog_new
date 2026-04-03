@@ -1,0 +1,160 @@
+<h1>Java 线程池</h1>
+
+<h2>一、为什么要用线程池</h2>
+
+<ul>
+  <li><strong>降低资源消耗</strong>：复用线程，减少创建销毁开销</li>
+  <li><strong>提高响应速度</strong>：任务到达立即执行，无需等待创建线程</li>
+  <li><strong>便于管理</strong>：统一分配、调优和监控</li>
+</ul>
+
+<h2>二、线程池参数</h2>
+
+<pre><code class="language-java">public ThreadPoolExecutor(
+    int corePoolSize,      // 核心线程数
+    int maximumPoolSize,   // 最大线程数
+    long keepAliveTime,    // 空闲线程存活时间
+    TimeUnit unit,         // 时间单位
+    BlockingQueue<Runnable> workQueue,  // 任务队列
+    ThreadFactory threadFactory,        // 线程工厂
+    RejectedExecutionHandler handler    // 拒绝策略
+)</code></pre>
+
+<h3>参数详解</h3>
+
+<table>
+  <tr><th>参数</th><th>说明</th></tr>
+  <tr><td>corePoolSize</td><td>常驻线程数，即使空闲也保留</td></tr>
+  <tr><td>maximumPoolSize</td><td>最大线程数，队列满后创建</td></tr>
+  <tr><td>keepAliveTime</td><td>非核心线程空闲多久回收</td></tr>
+  <tr><td>workQueue</td><td>等待执行的任务队列</td></tr>
+  <tr><td>threadFactory</td><td>创建线程的工厂，可设置名称</td></tr>
+  <tr><td>handler</td><td>任务被拒绝时的处理策略</td></tr>
+</table>
+
+<h2>三、任务队列</h2>
+
+<table>
+  <tr><th>队列类型</th><th>特点</th></tr>
+  <tr><td>ArrayBlockingQueue</td><td>有界队列，防止资源耗尽</td></tr>
+  <tr><td>LinkedBlockingQueue</td><td>无界队列，默认 Integer.MAX_VALUE</td></tr>
+  <tr><td>SynchronousQueue</td><td>直接提交，不存储任务</td></tr>
+  <tr><td>PriorityBlockingQueue</td><td>优先级队列</td></tr>
+</table>
+
+<h2>四、拒绝策略</h2>
+
+<table>
+  <tr><th>策略</th><th>行为</th></tr>
+  <tr><td>AbortPolicy</td><td>默认，抛出 RejectedExecutionException</td></tr>
+  <tr><td>CallerRunsPolicy</td><td>由调用线程执行任务</td></tr>
+  <tr><td>DiscardPolicy</td><td>静默丢弃任务</td></tr>
+  <tr><td>DiscardOldestPolicy</td><td>丢弃队列最老的任务，重试提交</td></tr>
+</table>
+
+<h2>五、线程池执行流程</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[提交任务] --> B{核心线程数<br>是否已满?}
+    B -->|否| C[创建核心线程<br>执行任务]
+    B -->|是| D{任务队列<br>是否已满?}
+    D -->|否| E[任务入队列]
+    D -->|是| F{最大线程数<br>是否已满?}
+    F -->|否| G[创建非核心线程<br>执行任务]
+    F -->|是| H[执行拒绝策略]
+    
+    style C fill:#9f9
+    style E fill:#9f9
+    style H fill:#f99</code></pre>
+
+<h2>六、Executors 工厂方法</h2>
+
+<pre><code class="language-java">// 固定线程数，队列无界
+ExecutorService fixed = Executors.newFixedThreadPool(10);
+
+// 单线程，保证任务顺序执行
+ExecutorService single = Executors.newSingleThreadExecutor();
+
+// 可缓存，线程数无上限，空闲60秒回收
+ExecutorService cached = Executors.newCachedThreadPool();
+
+// 定时任务
+ScheduledExecutorService scheduled = Executors.newScheduledThreadPool(10);
+scheduled.schedule(() -> {}, 10, TimeUnit.SECONDS);           // 延迟执行
+scheduled.scheduleAtFixedRate(() -> {}, 0, 10, TimeUnit.SECONDS); // 固定频率</code></pre>
+
+<p>⚠️ <strong>注意</strong>：Executors 创建的线程池有风险，建议使用 ThreadPoolExecutor 手动配置：</p>
+<ul>
+  <li>newFixedThreadPool 和 newSingleThreadExecutor：无界队列，可能 OOM</li>
+  <li>newCachedThreadPool：允许创建无限线程，可能资源耗尽</li>
+</ul>
+
+<h2>七、正确使用示例</h2>
+
+<pre><code class="language-java">public class ThreadPoolExample {
+    // 推荐手动创建
+    private static final ThreadPoolExecutor executor = new ThreadPoolExecutor(
+        4,                      // 核心线程数
+        8,                      // 最大线程数
+        60L, TimeUnit.SECONDS,  // 空闲线程存活时间
+        new ArrayBlockingQueue<>(100),  // 有界队列
+        new ThreadFactoryBuilder().setNameFormat("pool-%d").build(),
+        new ThreadPoolExecutor.CallerRunsPolicy()  // 拒绝策略
+    );
+    
+    public void submitTask(Runnable task) {
+        executor.submit(task);
+    }
+    
+    // 优雅关闭
+    public void shutdown() {
+        executor.shutdown();           // 不再接收新任务
+        try {
+            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                executor.shutdownNow(); // 强制关闭
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+        }
+    }
+}</code></pre>
+
+<h2>八、线程池监控</h2>
+
+<pre><code class="language-java">// 获取线程池状态
+int poolSize = executor.getPoolSize();           // 当前线程数
+int activeCount = executor.getActiveCount();     // 活跃线程数
+long completed = executor.getCompletedTaskCount(); // 已完成任务数
+int queueSize = executor.getQueue().size();      // 队列大小
+
+// 自定义监控
+public class MonitorableThreadPool extends ThreadPoolExecutor {
+    private final AtomicLong submittedTasks = new AtomicLong(0);
+    
+    @Override
+    protected void beforeExecute(Thread t, Runnable r) {
+        super.beforeExecute(t, r);
+        // 任务执行前统计
+    }
+    
+    @Override
+    protected void afterExecute(Runnable r, Throwable t) {
+        super.afterExecute(r, t);
+        // 任务执行后统计
+    }
+}</code></pre>
+
+<h2>九、最佳实践</h2>
+<ul>
+  <li>使用有界队列防止 OOM</li>
+  <li>根据任务类型配置线程数：
+    <ul>
+      <li>CPU 密集型：核心数 + 1</li>
+      <li>IO 密集型：核心数 × 2 或更多</li>
+    </ul>
+  </li>
+  <li>自定义线程名称便于排查问题</li>
+  <li>使用 CallerRunsPolicy 作为拒绝策略，保证任务不丢</li>
+  <li>应用关闭时优雅关闭线程池</li>
+  <li>使用 CompletableFuture 组合异步任务</li>
+</ul>

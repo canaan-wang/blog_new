@@ -1,0 +1,168 @@
+<h1>Linux 性能分析</h1>
+
+<h2>一、CPU 分析</h2>
+
+<h3>查看 CPU 使用率</h3>
+<pre><code class="language-bash"># 整体情况
+top
+htop
+
+# 详细统计
+mpstat -P ALL 1
+
+# 进程 CPU 占用
+pidstat 1
+ps -eo pid,comm,%cpu --sort=-%cpu | head
+
+# 负载
+uptime
+cat /proc/loadavg</code></pre>
+
+<h3>CPU 上下文切换</h3>
+<pre><code class="language-bash">vmstat 1
+# cs 列：上下文切换次数
+
+pidstat -w 1
+# cswch/s：自愿切换
+# nvcswch/s：非自愿切换</code></pre>
+
+<h2>二、内存分析</h2>
+
+<pre><code class="language-bash"># 内存使用情况
+free -h
+cat /proc/meminfo
+
+# 进程内存
+ps aux --sort=-%mem | head
+pidstat -r 1
+
+# 详细内存映射
+pmap -x PID
+
+# 内存分配跟踪
+valgrind --tool=memcheck ./program</code></pre>
+
+<h3>Buffer/Cache</h3>
+<pre><code class="language-bash"># 查看缓存
+free -h
+# buff/cache：文件系统缓存
+
+# 清理缓存（谨慎使用）
+sync && echo 3 > /proc/sys/vm/drop_caches</code></pre>
+
+<h2>三、磁盘 IO 分析</h2>
+
+<pre><code class="language-bash"># IO 统计
+iostat -x 1
+# await：平均 IO 等待时间（ms）
+# %util：磁盘利用率
+
+# 进程 IO
+pidstat -d 1
+iotop
+
+# 详细的 IO 跟踪
+strace -e trace=open,close,read,write -p PID
+
+# 文件系统使用率
+df -h
+du -sh /path</code></pre>
+
+<h3>查找大文件</h3>
+<pre><code class="language-bash"># 查找大于 100M 的文件
+find / -type f -size +100M -exec ls -lh {} \;
+
+# 目录大小排序
+du -h --max-depth=1 /var | sort -hr | head</code></pre>
+
+<h2>四、网络分析</h2>
+
+<pre><code class="language-bash"># 连接状态统计
+netstat -ant | awk '{print $6}' | sort | uniq -c | sort -rn
+ss -s
+
+# 实时流量
+iftop
+nload
+
+# 抓包分析
+tcpdump -i eth0 -w capture.pcap
+wireshark capture.pcap
+
+# 端口监听
+netstat -tlnp
+ss -tlnp
+
+# 连接数统计
+netstat -ant | grep ESTABLISHED | wc -l</code></pre>
+
+<h2>五、综合分析工具</h2>
+
+<h3>perf（性能剖析）</h3>
+<pre><code class="language-bash"># 记录性能数据
+perf record -g ./program
+
+# 查看报告
+perf report
+
+# 实时统计
+perf top
+
+# 查看调用链
+perf record -e cpu-clock --call-graph dwarf ./program</code></pre>
+
+<h3>火焰图生成</h3>
+<pre><code class="language-bash"># 1. 使用 perf 采集
+git clone https://github.com/brendangregg/FlameGraph
+cd FlameGraph
+
+# 采集 30 秒
+perf record -F 99 -a -g -- sleep 30
+perf script | ./stackcollapse-perf.pl | ./flamegraph.pl > out.svg</code></pre>
+
+<h3>bpftrace / eBPF</h3>
+<pre><code class="language-bash"># 查看系统调用
+bpftrace -e 'tracepoint:raw_syscalls:sys_enter { @[comm] = count(); }'
+
+# 查看文件打开
+bpftrace -e 'tracepoint:syscalls:sys_enter_openat { printf("%s %s\n", comm, str(args->filename)); }'</code></pre>
+
+<h2>六、JVM 性能分析</h2>
+
+<pre><code class="language-bash"># 查看 JVM 进程
+jps -lvm
+
+# GC 情况
+jstat -gcutil PID 1000
+
+# 堆内存
+jmap -heap PID
+jmap -histo PID | head -20
+
+# 线程 Dump
+jstack PID > thread_dump.txt
+
+# 堆 Dump
+jmap -dump:format=b,file=heap.hprof PID</code></pre>
+
+<h2>七、常见指标阈值</h2>
+
+<table>
+  <tr><th>指标</th><th>健康值</th><th>说明</th></tr>
+  <tr><td>CPU 使用率</td><td>&lt; 70%</td><td>持续高负载需优化</td></tr>
+  <tr><td>Load Average</td><td>&lt; CPU 核数</td><td>1分钟/5分钟/15分钟</td></tr>
+  <tr><td>内存使用率</td><td>&lt; 80%</td><td>关注 swap 使用</td></tr>
+  <tr><td>磁盘 IO 等待</td><td>&lt; 10%</td><td>%iowait</td></tr>
+  <tr><td>IO 延迟(await)</td><td>&lt; 10ms</td><td>SSD 应更低</td></tr>
+  <tr><td>上下文切换</td><td>&lt; 10000/s</td><td>过高可能进程数过多</td></tr>
+</table>
+
+<h2>八、性能调优思路</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[发现性能问题] --> B[定位瓶颈]
+    B --> C{瓶颈类型}
+    C -->|CPU| D[优化算法/减少计算]
+    C -->|内存| E[优化数据结构/增加内存]
+    C -->|IO| F[减少IO/使用缓存/优化SQL]
+    C -->|网络| G[减少传输/压缩/批量]</code></pre>

@@ -1,0 +1,101 @@
+<h1>Java String</h1>
+
+<h2>一、String 核心特性</h2>
+
+<p>String 是 Java 中使用最频繁的类，具有以下核心特性：</p>
+<ul>
+  <li><strong>不可变性</strong>：字符串一旦创建不可修改，修改会创建新对象</li>
+  <li><strong>常量池</strong>：字面量字符串存储在常量池，复用相同字符串</li>
+  <li><strong>final 类</strong>：不可被继承，保证不可变性</li>
+</ul>
+
+<h2>二、创建方式对比</h2>
+
+<table>
+  <tr><th>方式</th><th>示例</th><th>存储位置</th><th>特点</th></tr>
+  <tr><td>字面量</td><td><code>String s = "abc";</code></td><td>字符串常量池</td><td>复用，高效</td></tr>
+  <tr><td>new</td><td><code>String s = new String("abc");</code></td><td>堆内存</td><td>每次新建对象</td></tr>
+</table>
+
+<pre><code class="language-java">String s1 = "hello"; // 常量池
+String s2 = "hello"; // 复用常量池对象
+String s3 = new String("hello"); // 堆内存新对象
+
+System.out.println(s1 == s2); // true，同一对象
+System.out.println(s1 == s3); // false，不同对象</code></pre>
+
+<h2>三、字符串拼接</h2>
+
+<h3>3.1 + 运算符</h3>
+<pre><code class="language-java">String s = "a" + "b"; // 编译优化为 "ab"
+
+// 循环中避免使用 +，每次都会创建新对象
+String result = "";
+for (String s : list) {
+    result += s; // 每次创建 StringBuilder + 新 String
+}</code></pre>
+
+<h3>3.2 StringBuilder（推荐）</h3>
+<pre><code class="language-java">// 单线程使用 StringBuilder
+StringBuilder sb = new StringBuilder();
+for (String s : list) {
+    sb.append(s);
+}
+String result = sb.toString();
+
+// 多线程使用 StringBuffer（线程安全，性能略低）
+StringBuffer sbf = new StringBuffer();
+sbf.append("thread-safe");</code></pre>
+
+<h2>四、常用方法</h2>
+
+<table>
+  <tr><th>方法</th><th>作用</th></tr>
+  <tr><td>length()</td><td>字符串长度</td></tr>
+  <tr><td>charAt(int)</td><td>获取指定位置字符</td></tr>
+  <tr><td>substring(int, int)</td><td>截取子串</td></tr>
+  <tr><td>indexOf(String)</td><td>查找子串位置</td></tr>
+  <tr><td>split(String)</td><td>按正则分割</td></tr>
+  <tr><td>trim()</td><td>去除首尾空白</td></tr>
+  <tr><td>toLower/UpperCase()</td><td>大小写转换</td></tr>
+  <tr><td>equals()</td><td>内容比较</td></tr>
+  <tr><td>equalsIgnoreCase()</td><td>忽略大小写比较</td></tr>
+  <tr><td>startsWith/endsWith()</td><td>前缀/后缀判断</td></tr>
+  <tr><td>replace/replaceAll()</td><td>替换字符/正则替换</td></tr>
+  <tr><td>isEmpty()</td><td>判断是否为空串</td></tr>
+  <tr><td>isBlank() (Java 11+)</td><td>判断是否为空白串</td></tr>
+  <tr><td>strip() (Java 11+)</td><td>去除所有空白</td></tr>
+</table>
+
+<h2>五、比较方式</h2>
+
+<pre><code class="language-java">String s1 = "abc";
+String s2 = new String("abc");
+
+// == 比较引用地址
+s1 == s2; // false
+
+// equals 比较内容
+s1.equals(s2); // true
+
+// 常量比较，避免 NPE
+"abc".equals(s1); // 推荐
+
+// compareTo 比较大小
+"a".compareTo("b"); // 负数，小于</code></pre>
+
+<h2>六、String.intern()</h2>
+<p>将字符串放入常量池，返回常量池中的引用：</p>
+
+<pre><code class="language-java">String s1 = new String("hello").intern();
+String s2 = "hello";
+System.out.println(s1 == s2); // true</code></pre>
+
+<h2>七、最佳实践</h2>
+<ul>
+  <li>优先使用字面量创建字符串</li>
+  <li>循环拼接用 StringBuilder，不用 +</li>
+  <li>比较内容用 equals，不用 ==</li>
+  <li>判断空串先判 null 再判空</li>
+  <li>Java 11+ 优先使用 strip() 而非 trim()</li>
+</ul>

@@ -1,0 +1,226 @@
+<h1>MyBatis</h1>
+
+<h2>一、什么是 MyBatis</h2>
+
+<p>MyBatis 是优秀的持久层框架，简化了 JDBC 操作，通过 XML 或注解将 Java 对象与 SQL 语句映射。</p>
+
+<p>核心特点：</p>
+<ul>
+  <li>SQL 与代码分离，便于维护</li>
+  <li>支持动态 SQL，灵活组装查询条件</li>
+  <li>自动结果集映射到 Java 对象</li>
+  <li>支持缓存，提高查询性能</li>
+  <li>轻量级，学习成本低</li>
+</ul>
+
+<h2>二、快速开始</h2>
+
+<h3>添加依赖</h3>
+<pre><code class="language-xml"><dependencies>
+    <!-- MyBatis -->
+    <dependency>
+        <groupId>org.mybatis.spring.boot</groupId>
+        <artifactId>mybatis-spring-boot-starter</artifactId>
+        <version>3.0.3</version>
+    </dependency>
+    
+    <!-- MySQL 驱动 -->
+    <dependency>
+        <groupId>mysql</groupId>
+        <artifactId>mysql-connector-java</artifactId>
+    </dependency>
+</dependencies></code></pre>
+
+<h3>配置数据源</h3>
+<pre><code class="language-yaml">spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/mydb
+    username: root
+    password: secret
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.example.entity</code></pre>
+
+<h3>实体类</h3>
+<pre><code class="language-java">@Data
+public class User {
+    private Long id;
+    private String username;
+    private String email;
+    private LocalDateTime createTime;
+}</code></pre>
+
+<h3>Mapper 接口</h3>
+<pre><code class="language-java">@Mapper
+public interface UserMapper {
+    
+    @Select("SELECT * FROM user WHERE id = #{id}")
+    User findById(Long id);
+    
+    @Insert("INSERT INTO user(username, email) VALUES(#{username}, #{email})")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    int insert(User user);
+    
+    @Update("UPDATE user SET username=#{username}, email=#{email} WHERE id=#{id}")
+    int update(User user);
+    
+    @Delete("DELETE FROM user WHERE id = #{id}")
+    int deleteById(Long id);
+}</code></pre>
+
+<h2>三、XML 映射文件</h2>
+
+<pre><code class="language-xml"><!-- resources/mapper/UserMapper.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.mapper.UserMapper">
+    
+    <resultMap id="BaseResultMap" type="User">
+        <id column="id" property="id"/>
+        <result column="username" property="username"/>
+        <result column="email" property="email"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+    
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT * FROM user WHERE id = #{id}
+    </select>
+    
+    <select id="findAll" resultMap="BaseResultMap">
+        SELECT * FROM user
+        <where>
+            <if test="username != null">
+                AND username LIKE CONCAT('%', #{username}, '%')
+            </if>
+            <if test="email != null">
+                AND email = #{email}
+            </if>
+        </where>
+    </select>
+    
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user(username, email, create_time)
+        VALUES(#{username}, #{email}, NOW())
+    </insert>
+    
+</mapper></code></pre>
+
+<h2>四、动态 SQL</h2>
+
+<table>
+  <tr><th>标签</th><th>作用</th></tr>
+  <tr><td>&lt;if&gt;</td><td>条件判断</td></tr>
+  <tr><td>&lt;where&gt;</td><td>智能添加 WHERE，处理 AND/OR</td></tr>
+  <tr><td>&lt;set&gt;</td><td>智能添加 SET，处理逗号</td></tr>
+  <tr><td>&lt;choose&gt;/&lt;when&gt;/&lt;otherwise&gt;</td><td>多分支选择</td></tr>
+  <tr><td>&lt;foreach&gt;</td><td>循环遍历（IN 条件）</td></tr>
+  <tr><td>&lt;bind&gt;</td><td>创建变量</td></tr>
+</table>
+
+<pre><code class="language-xml"><!-- 动态条件查询 -->
+<select id="search" resultMap="BaseResultMap">
+    SELECT * FROM user
+    <where>
+        <if test="username != null and username != ''">
+            AND username LIKE CONCAT('%', #{username}, '%')
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        <choose>
+            <when test="startTime != null and endTime != null">
+                AND create_time BETWEEN #{startTime} AND #{endTime}
+            </when>
+            <when test="startTime != null">
+                AND create_time >= #{startTime}
+            </when>
+        </choose>
+    </where>
+    ORDER BY create_time DESC
+</select>
+
+<!-- IN 查询 -->
+<select id="findByIds" resultMap="BaseResultMap">
+    SELECT * FROM user WHERE id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">
+        #{id}
+    </foreach>
+</select>
+
+<!-- 批量插入 -->
+<insert id="batchInsert">
+    INSERT INTO user(username, email) VALUES
+    <foreach collection="list" item="user" separator=",">
+        (#{user.username}, #{user.email})
+    </foreach>
+</insert></code></pre>
+
+<h2>五、关联查询</h2>
+
+<pre><code class="language-xml"><!-- 一对一 -->
+<resultMap id="UserWithOrderMap" type="User">
+    <id column="user_id" property="id"/>
+    <result column="username" property="username"/>
+    <association property="order" javaType="Order">
+        <id column="order_id" property="id"/>
+        <result column="order_no" property="orderNo"/>
+    </association>
+</resultMap>
+
+<!-- 一对多 -->
+<resultMap id="UserWithOrdersMap" type="User">
+    <id column="user_id" property="id"/>
+    <collection property="orders" ofType="Order">
+        <id column="order_id" property="id"/>
+        <result column="order_no" property="orderNo"/>
+    </collection>
+</resultMap></code></pre>
+
+<h2>六、缓存机制</h2>
+
+<h3>一级缓存（默认开启）</h3>
+<pre><code class="language-java">// SqlSession 级别缓存，同一个 Session 内有效
+SqlSession session = sqlSessionFactory.openSession();
+User user1 = session.selectOne("findById", 1);
+User user2 = session.selectOne("findById", 1); // 使用缓存</code></pre>
+
+<h3>二级缓存</h3>
+<pre><code class="language-xml"><!-- 开启二级缓存 -->
+<mapper namespace="com.example.mapper.UserMapper">
+    <cache eviction="LRU" flushInterval="60000" size="512" readOnly="true"/>
+    ...
+</mapper></code></pre>
+
+<h2>七、分页查询</h2>
+
+<pre><code class="language-java">// 使用 PageHelper
+PageHelper.startPage(1, 10); // 第1页，每页10条
+List<User> list = userMapper.findAll();
+PageInfo<User> pageInfo = new PageInfo<>(list);
+
+// 获取分页信息
+long total = pageInfo.getTotal();     // 总记录数
+int pages = pageInfo.getPages();      // 总页数
+List<User> data = pageInfo.getList(); // 当前页数据</code></pre>
+
+<h2>八、与 Spring Boot 集成最佳实践</h2>
+
+<ul>
+  <li>使用 @MapperScan 自动扫描 Mapper</li>
+  <li>SQL 写 XML 文件，复杂查询更清晰</li>
+  <li>使用 MyBatis-Plus 简化 CRUD</li>
+  <li>配置多数据源时注意事务管理</li>
+  <li>开启 SQL 日志方便调试</li>
+</ul>
+
+<pre><code class="language-java">@SpringBootApplication
+@MapperScan("com.example.mapper")
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}</code></pre>

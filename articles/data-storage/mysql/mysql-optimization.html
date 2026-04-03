@@ -1,0 +1,155 @@
+<h1>MySQL 性能优化</h1>
+
+<h2>一、SQL 优化</h2>
+
+<h3>避免 SELECT *</h3>
+<pre><code class="language-sql">-- 不推荐
+SELECT * FROM user WHERE id = 1;
+
+-- 推荐
+SELECT id, name, email FROM user WHERE id = 1;</code></pre>
+
+<h3>分页优化</h3>
+<pre><code class="language-sql">-- 深度分页性能差
+SELECT * FROM user ORDER BY id LIMIT 100000, 10;
+
+-- 优化1：使用覆盖索引
+SELECT * FROM user 
+WHERE id >= (SELECT id FROM user ORDER BY id LIMIT 100000, 1) 
+LIMIT 10;
+
+-- 优化2：记住上次位置
+SELECT * FROM user WHERE id > last_id ORDER BY id LIMIT 10;</code></pre>
+
+<h3>批量操作</h3>
+<pre><code class="language-sql">-- 不推荐：循环单条插入
+INSERT INTO user VALUES (1, 'a');
+INSERT INTO user VALUES (2, 'b');
+
+-- 推荐：批量插入
+INSERT INTO user VALUES (1, 'a'), (2, 'b'), (3, 'c');</code></pre>
+
+<h2>二、表结构优化</h2>
+
+<h3>选择合适的数据类型</h3>
+<table>
+  <tr><th>类型</th><th>建议</th></tr>
+  <tr><td>INT</td><td>主键、状态等整数</td></tr>
+  <tr><td>BIGINT</td><td>大数据量 ID、时间戳</td></tr>
+  <tr><td>VARCHAR</td><td>变长字符串</td></tr>
+  <tr><td>DECIMAL</td><td>金额（避免浮点）</td></tr>
+  <tr><td>DATETIME</td><td>日期时间</td></tr>
+  <tr><td>TIMESTAMP</td><td>自动更新记录时间</td></tr>
+</table>
+
+<h3>范式设计</h3>
+<pre><code class="language-mermaid">graph TD
+    subgraph "第一范式"
+        A1[用户表] --> |包含| B1[多个手机号<br>1,2,3]
+        style B1 fill:#f99
+    end
+    
+    subgraph "第二范式"
+        A2[用户表] --> |拆分| B2[用户表]
+        A2 --> C2[手机号表]
+        style C2 fill:#9f9
+    end</code></pre>
+
+<h2>三、连接优化</h2>
+
+<pre><code class="language-sql">-- 确保连接字段有索引
+SELECT u.name, o.order_no 
+FROM user u 
+JOIN orders o ON u.id = o.user_id  -- user_id 需有索引
+WHERE u.id = 1;
+
+-- 小表驱动大表
+SELECT * FROM small_table s 
+JOIN big_table b ON s.id = b.small_id;</code></pre>
+
+<h2>四、服务器配置优化</h2>
+
+<pre><code class="language-ini">[mysqld]
+# 连接数
+max_connections = 500
+max_connect_errors = 1000
+
+# InnoDB 缓冲池（通常设为内存的 50-70%）
+innodb_buffer_pool_size = 4G
+innodb_buffer_pool_instances = 4
+
+# 日志文件大小
+innodb_log_file_size = 512M
+innodb_log_buffer_size = 64M
+
+# 刷盘策略（0/1/2）
+innodb_flush_log_at_trx_commit = 2
+
+# 查询缓存（MySQL 8.0 已移除）
+query_cache_type = 1
+query_cache_size = 64M
+
+# 临时表大小
+tmp_table_size = 64M
+max_heap_table_size = 64M</code></pre>
+
+<h2>五、慢查询分析</h2>
+
+<pre><code class="language-sql">-- 开启慢查询日志
+SET GLOBAL slow_query_log = 'ON';
+SET GLOBAL long_query_time = 1;
+SET GLOBAL log_queries_not_using_indexes = 'ON';
+
+-- 查看慢查询
+SELECT * FROM mysql.slow_log ORDER BY start_time DESC LIMIT 10;
+
+-- 使用 mysqldumpslow 分析
+mysqldumpslow -s t -t 10 /var/lib/mysql/slow.log</code></pre>
+
+<h2>六、分区表</h2>
+
+<pre><code class="language-sql">-- 按日期范围分区
+CREATE TABLE logs (
+    id BIGINT PRIMARY KEY,
+    log_time DATETIME,
+    message TEXT
+) PARTITION BY RANGE (YEAR(log_time)) (
+    PARTITION p2022 VALUES LESS THAN (2023),
+    PARTITION p2023 VALUES LESS THAN (2024),
+    PARTITION p2024 VALUES LESS THAN (2025),
+    PARTITION p_future VALUES LESS THAN MAXVALUE
+);
+
+-- 查询自动分区裁剪
+SELECT * FROM logs WHERE log_time >= '2024-01-01'; -- 只扫描 p2024</code></pre>
+
+<h2>七、读写分离</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[应用] -->|写| M[Master]
+    A -->|读| P[Proxy]
+    P --> S1[Slave 1]
+    P --> S2[Slave 2]
+    M -.->|复制| S1
+    M -.->|复制| S2</code></pre>
+
+<h2>八、监控指标</h2>
+
+<table>
+  <tr><th>指标</th><th>健康值</th><th>查看方式</th></tr>
+  <tr><td>QPS</td><td>视硬件而定</td><td>SHOW STATUS</td></tr>
+  <tr><td>慢查询比例</td><td>&lt; 1%</td><td>慢查询日志</td></tr>
+  <tr><td>连接数</td><td>&lt; max_connections * 0.8</td><td>SHOW PROCESSLIST</td></tr>
+  <tr><td>InnoDB 缓冲命中率</td><td>&gt; 95%</td><td>SHOW ENGINE INNODB STATUS</td></tr>
+</table>
+
+<h2>九、优化工具</h2>
+
+<pre><code class="language-bash"># pt-query-digest 分析慢查询
+pt-query-digest /var/log/mysql/slow.log
+
+# pt-index-usage 分析索引使用情况
+pt-index-usage /var/log/mysql/slow.log --host localhost
+
+# pt-online-schema-change 在线 DDL
+pt-online-schema-change --alter "ADD COLUMN age INT" D=mydb,t=user --execute</code></pre>

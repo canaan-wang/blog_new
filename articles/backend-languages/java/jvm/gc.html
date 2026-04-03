@@ -1,0 +1,153 @@
+<h1>Java 垃圾回收（GC）</h1>
+
+<h2>一、GC 核心概念</h2>
+
+<p>垃圾回收（Garbage Collection）是 JVM 自动管理内存的机制，负责回收不再使用的对象，防止内存泄漏。</p>
+
+<h3>判断对象死亡</h3>
+
+<ol>
+  <li><strong>引用计数法</strong>：计数为 0 时回收（Python 用，Java 不用，无法解决循环引用）</li>
+  <li><strong>可达性分析</strong>：从 GC Roots 向下搜索，不可达的对象可回收</li>
+</ol>
+
+<pre><code class="language-java">// GC Roots 包括：
+// 1. 虚拟机栈中局部变量引用的对象
+// 2. 方法区中类静态属性引用的对象
+// 3. 方法区中常量引用的对象
+// 4. 本地方法栈中 JNI 引用的对象
+// 5. 所有被同步锁持有的对象</code></pre>
+
+<h2>二、垃圾回收算法</h2>
+
+<table>
+  <tr><th>算法</th><th>原理</th><th>优点</th><th>缺点</th></tr>
+  <tr><td>标记-清除</td><td>标记存活对象，清除未标记</td><td>简单</td><td>内存碎片</td></tr>
+  <tr><td>复制</td><td>存活对象复制到另一块内存</td><td>无碎片</td><td>内存利用率 50%</td></tr>
+  <tr><td>标记-整理</td><td>标记后移动对象，清理边界外</td><td>无碎片</td><td>移动对象开销大</td></tr>
+  <tr><td>分代收集</td><td>年轻代用复制，老年代用标记-清除/整理</td><td>高效实用</td><td>复杂</td></tr>
+</table>
+
+<h2>三、堆内存分代</h2>
+
+<pre><code class="language-mermaid">graph TB
+    subgraph Heap[堆内存]
+        subgraph Young[年轻代 Young Generation]
+            Eden[Eden 区 8/10]
+            S0[Survivor0 1/10]
+            S1[Survivor1 1/10]
+        end
+        Old[老年代 Old Generation]
+    end
+    
+    style Young fill:#bfb
+    style Old fill:#fbf</code></pre>
+
+<h3>分代策略</h3>
+<ul>
+  <li><strong>年轻代</strong>：存放新对象，Minor GC 频繁，大部分对象很快死亡</li>
+  <li><strong>老年代</strong>：存放长期存活对象，Major GC 较少</li>
+  <li><strong>晋升</strong>：对象存活足够次数（默认 15）后进入老年代</li>
+</ul>
+
+<h2>四、垃圾回收器</h2>
+
+<table>
+  <tr><th>回收器</th><th>算法</th><th>特点</th><th>适用场景</th></tr>
+  <tr><td>Serial</td><td>复制/标记整理</td><td>单线程，STW</td><td>客户端模式</td></tr>
+  <tr><td>ParNew</td><td>复制</td><td>Serial 多线程版</td><td>配合 CMS</td></tr>
+  <tr><td>Parallel Scavenge</td><td>复制</td><td>吞吐量优先</td><td>后台计算</td></tr>
+  <tr><td>CMS</td><td>标记清除</td><td>低延迟，并发</td><td>Web 应用（JDK 9 废弃）</td></tr>
+  <tr><td>G1</td><td>标记整理 + 复制</td><td>分区管理，可预测停顿</td><td>大堆（JDK 9+ 默认）</td></tr>
+  <tr><td>ZGC</td><td>染色指针</td><td>超低延迟（&lt;10ms），并发</td><td>JDK 11+，超大堆</td></tr>
+  <tr><td>Shenandoah</td><td>染色指针</td><td>低延迟，并发</td><td>OpenJDK，超大堆</td></tr>
+</table>
+
+<h2>五、G1 垃圾回收器详解</h2>
+
+<p>G1（Garbage First）是 JDK 9+ 默认回收器，适合大堆（&gt; 6GB）：</p>
+
+<pre><code class="language-mermaid">graph TB
+    subgraph G1Heap[G1 堆 - 分区管理]
+        R1[Region 1: Eden]
+        R2[Region 2: Survivor]
+        R3[Region 3: Old]
+        R4[Region 4: Humongous]
+        R5[Region 5: Eden]
+        R6[Region 6: Old]
+    end
+    
+    style R1 fill:#bfb
+    style R2 fill:#ff9
+    style R4 fill:#f99</code></pre>
+
+<h3>G1 特点</h3>
+<ul>
+  <li>堆划分为多个 Region（1MB~32MB）</li>
+  <li>优先回收垃圾最多的 Region</li>
+  <li>可设置目标停顿时间（默认 200ms）</li>
+  <li>整体标记整理，局部复制</li>
+</ul>
+
+<h2>六、GC 调优</h2>
+
+<h3>常用参数</h3>
+
+<pre><code class="language-bash"># 基础配置
+-Xms4g -Xmx4g          # 固定堆大小，避免扩容
+-XX:+UseG1GC           # 使用 G1
+-XX:MaxGCPauseMillis=200  # 目标停顿时间
+
+# G1 高级配置
+-XX:G1HeapRegionSize=16m   # Region 大小
+-XX:InitiatingHeapOccupancyPercent=45  # 触发 GC 的堆占用率
+
+# GC 日志（JDK 9+）
+-Xlog:gc*:file=gc.log:time,uptime,level,tags</code></pre>
+
+<h3>调优目标选择</h3>
+
+<table>
+  <tr><th>目标</th><th>策略</th></tr>
+  <tr><td>低延迟</td><td>选择 CMS/G1/ZGC，减小堆，缩短停顿时间目标</td></tr>
+  <tr><td>高吞吐</td><td>选择 Parallel/G1，增大年轻代，减少 GC 次数</td></tr>
+  <tr><td>大堆</td><td>必须使用 G1/ZGC/Shenandoah</td></tr>
+</table>
+
+<h2>七、GC 问题排查</h2>
+
+<h3>常见 GC 问题</h3>
+
+<table>
+  <tr><th>问题</th><th>现象</th><th>解决</th></tr>
+  <tr><td>内存泄漏</td><td>Full GC 频繁，内存不释放</td><td>heap dump 分析，MAT 工具</td></tr>
+  <tr><td>GC 频繁</td><td>CPU 高，吞吐量低</td><td>增大堆，减少对象创建</td></tr>
+  <tr><td>Full GC 时间长</td><td>应用卡顿</td><td>改用 G1/ZGC，减小堆</td></tr>
+  <tr><td>OOM</td><td>堆/元空间/直接内存溢出</td><td>分析 dump 文件，修复代码</td></tr>
+</table>
+
+<h3>查看 GC 情况</h3>
+
+<pre><code class="language-bash"># 实时查看 GC
+jstat -gcutil PID 1000
+
+# 输出解释
+S0     S1     E      O      M     CCS    YGC     YGCT    FGC    FGCT     GCT
+0.00  80.00  20.00  30.00  95.00  92.00     10    0.150     2    0.500    0.650
+
+# S0/S1: Survivor 使用率
+# E: Eden 使用率
+# O: Old 使用率
+# M: Metaspace 使用率
+# YGC/YGCT: 年轻代 GC 次数/时间
+# FGC/FGCT: Full GC 次数/时间</code></pre>
+
+<h2>八、最佳实践</h2>
+<ul>
+  <li>避免创建大对象（直接进入老年代）</li>
+  <li>及时释放不再使用的对象引用（help GC）</li>
+  <li>使用连接池、对象池减少对象创建</li>
+  <li>设置合理的堆大小，避免频繁扩容</li>
+  <li>生产环境开启 GC 日志，便于问题排查</li>
+  <li>定期分析 GC 日志，调整参数</li>
+</ul>

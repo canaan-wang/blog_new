@@ -1,0 +1,128 @@
+<h1>Java CompletableFuture</h1>
+
+<h2>一、简介</h2>
+<p>CompletableFuture 是 Java 8 引入的异步编程工具，支持函数式组合、链式调用，简化了异步任务处理。</p>
+
+<h2>二、创建异步任务</h2>
+
+<pre><code class="language-java">import java.util.concurrent.CompletableFuture;
+
+// 无返回值
+CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+    System.out.println("Running in " + Thread.currentThread().getName());
+});
+
+// 有返回值
+CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+    return "Hello";
+});
+
+// 使用自定义线程池
+ExecutorService executor = Executors.newFixedThreadPool(4);
+CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+    return "World";
+}, executor);</code></pre>
+
+<h2>三、链式操作</h2>
+
+<pre><code class="language-java">// thenApply: 转换结果
+CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> "hello")
+    .thenApply(s -> s.toUpperCase())
+    .thenApply(s -> s + " WORLD");
+// 结果: HELLO WORLD
+
+// thenAccept: 消费结果（无返回值）
+CompletableFuture.supplyAsync(() -> "data")
+    .thenAccept(System.out::println);
+
+// thenRun: 不依赖结果，执行动作
+CompletableFuture.supplyAsync(() -> "done")
+    .thenRun(() -> System.out.println("Finished"));</code></pre>
+
+<h2>四、组合多个 Future</h2>
+
+<pre><code class="language-java">// thenCompose: 扁平化（避免嵌套 Future）
+CompletableFuture<String> result = getUserId()
+    .thenCompose(id -> getUserName(id));
+
+// thenCombine: 合并两个独立 Future
+CompletableFuture<String> result = getUser()
+    .thenCombine(getOrder(), (user, order) -> user + ":" + order);
+
+// allOf: 等待所有完成
+CompletableFuture<Void> all = CompletableFuture.allOf(future1, future2, future3);
+
+// anyOf: 任一完成
+CompletableFuture<Object> any = CompletableFuture.anyOf(future1, future2);</code></pre>
+
+<h2>五、异常处理</h2>
+
+<pre><code class="language-java">CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+    if (true) throw new RuntimeException("Error");
+    return "success";
+})
+// 捕获异常并恢复
+.exceptionally(ex -> {
+    System.out.println("Exception: " + ex.getMessage());
+    return "default";
+})
+// 或
+.handle((result, ex) -> {
+    if (ex != null) {
+        return "fallback: " + ex.getMessage();
+    }
+    return result;
+});
+
+// 异常后继续执行
+.future.whenComplete((result, ex) -> {
+    if (ex != null) {
+        log.error("Failed", ex);
+    } else {
+        log.info("Success: {}", result);
+    }
+});</code></pre>
+
+<h2>六、超时处理</h2>
+
+<pre><code class="language-java">// Java 9+
+CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+    try {
+        Thread.sleep(5000);
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+    }
+    return "result";
+}).orTimeout(3, TimeUnit.SECONDS)    // 超时抛异常
+  .exceptionally(ex -> "timeout");
+
+// 超时返回默认值
+.completeOnTimeout("default", 3, TimeUnit.SECONDS);</code></pre>
+
+<h2>七、实际应用</h2>
+
+<pre><code class="language-java">// 并行查询后聚合
+public Map<String, Object> getDashboardData() {
+    CompletableFuture<List<Order>> ordersFuture = 
+        CompletableFuture.supplyAsync(() -> orderService.getRecent());
+    CompletableFuture<List<User>> usersFuture = 
+        CompletableFuture.supplyAsync(() -> userService.getActive());
+    CompletableFuture<Statistics> statsFuture = 
+        CompletableFuture.supplyAsync(() -> statsService.getToday());
+    
+    CompletableFuture.allOf(ordersFuture, usersFuture, statsFuture).join();
+    
+    Map<String, Object> dashboard = new HashMap<>();
+    dashboard.put("orders", ordersFuture.join());
+    dashboard.put("users", usersFuture.join());
+    dashboard.put("stats", statsFuture.join());
+    return dashboard;
+}</code></pre>
+
+<h2>八、最佳实践</h2>
+<ul>
+  <li>始终使用自定义线程池，避免共用 ForkJoinPool</li>
+  <li>处理异常避免静默失败</li>
+  <li>注意 join() 和 get() 的区别（get 需处理受检异常）</li>
+  <li>及时清理完成的 Future 避免内存泄漏</li>
+</ul>

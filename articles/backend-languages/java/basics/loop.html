@@ -1,0 +1,143 @@
+<h1>Java 循环与遍历</h1>
+
+<h2>一、传统循环方式</h2>
+
+<h3>for 循环</h3>
+<pre><code class="language-java">// 基础 for
+for (int i = 0; i < 10; i++) {
+    System.out.println(i);
+}
+
+// 倒序遍历（删除元素时常用）
+for (int i = list.size() - 1; i >= 0; i--) {
+    if (needRemove(list.get(i))) {
+        list.remove(i);
+    }
+}</code></pre>
+
+<h3>while / do-while</h3>
+<pre><code class="language-java">// while
+while (condition) {
+    // 可能一次都不执行
+}
+
+// do-while
+do {
+    // 至少执行一次
+} while (condition);</code></pre>
+
+<h2>二、增强 for 循环（foreach）</h2>
+
+<pre><code class="language-java">List<String> list = Arrays.asList("a", "b", "c");
+
+// 遍历元素
+for (String item : list) {
+    System.out.println(item);
+}
+
+// 遍历数组
+int[] arr = {1, 2, 3};
+for (int num : arr) {
+    System.out.println(num);
+}
+
+// 注意：遍历时不能修改集合（会抛 ConcurrentModificationException）
+for (String item : list) {
+    // list.remove(item); // 错误！
+}</code></pre>
+
+<h2>三、Iterator 迭代器</h2>
+
+<pre><code class="language-java">// 基础用法
+Iterator<String> it = list.iterator();
+while (it.hasNext()) {
+    String item = it.next();
+    if (needRemove(item)) {
+        it.remove(); // 安全删除
+    }
+}
+
+// ListIterator（支持双向遍历）
+ListIterator<String> lit = list.listIterator();
+while (lit.hasNext()) {
+    String item = lit.next();
+    lit.set("new_" + item); // 修改元素
+}
+while (lit.hasPrevious()) {
+    String item = lit.previous(); // 反向遍历
+}</code></pre>
+
+<h2>四、Stream API（Java 8+）</h2>
+
+<pre><code class="language-java">List<Integer> numbers = Arrays.asList(1, 2, 3, 4, 5);
+
+// 过滤
+numbers.stream()
+    .filter(n -> n > 2)
+    .forEach(System.out::println);
+
+// 映射
+numbers.stream()
+    .map(n -> n * n)
+    .collect(Collectors.toList());
+
+// 排序
+numbers.stream()
+    .sorted(Comparator.reverseOrder())
+    .collect(Collectors.toList());
+
+// 聚合
+int sum = numbers.stream().mapToInt(Integer::intValue).sum();
+Optional<Integer> max = numbers.stream().max(Integer::compare);</code></pre>
+
+<h2>五、遍历 Map</h2>
+
+<pre><code class="language-java">Map<String, Integer> map = new HashMap<>();
+
+// 方式1：entrySet
+for (Map.Entry<String, Integer> entry : map.entrySet()) {
+    System.out.println(entry.getKey() + " = " + entry.getValue());
+}
+
+// 方式2：keySet
+for (String key : map.keySet()) {
+    System.out.println(key + " = " + map.get(key));
+}
+
+// 方式3：Java 8 forEach
+map.forEach((k, v) -> System.out.println(k + " = " + v));
+
+// 方式4：Stream
+map.entrySet().stream()
+    .filter(e -> e.getValue() > 10)
+    .forEach(e -> System.out.println(e.getKey()));</code></pre>
+
+<h2>六、循环控制</h2>
+
+<pre><code class="language-java">// break：跳出整个循环
+for (int i = 0; i < 10; i++) {
+    if (i == 5) break;
+}
+
+// continue：跳过当前迭代
+for (int i = 0; i < 10; i++) {
+    if (i % 2 == 0) continue;
+    System.out.println(i); // 只打印奇数
+}
+
+// 带标签的 break（跳出多层循环）
+outer:
+for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+        if (j == 1) break outer;
+    }
+}</code></pre>
+
+<h2>七、最佳实践</h2>
+<ul>
+  <li>简单遍历用增强 for，需索引用传统 for</li>
+  <li>遍历删除必须用 Iterator.remove()</li>
+  <li>数据处理优先用 Stream API（简洁、易并行）</li>
+  <li>大数据量避免频繁 Stream 装箱（用 mapToInt 等）</li>
+  <li>嵌套循环考虑性能，必要时用标签 break</li>
+</ul>

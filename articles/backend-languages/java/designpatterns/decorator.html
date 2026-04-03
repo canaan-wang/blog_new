@@ -1,0 +1,33 @@
+<h1>装饰器模式（Decorator）</h1>
+<h2>一、定义</h2>
+<p>动态地给对象添加额外职责，比继承更灵活。</p>
+<h2>二、实现</h2>
+<pre><code class="language-java">// 组件接口
+interface Coffee { double cost(); }
+
+// 具体组件
+class SimpleCoffee implements Coffee {
+    public double cost() { return 10; }
+}
+
+// 装饰器基类
+abstract class CoffeeDecorator implements Coffee {
+    protected Coffee coffee;
+    public CoffeeDecorator(Coffee c) { this.coffee = c; }
+}
+
+// 具体装饰器
+class Milk extends CoffeeDecorator {
+    public Milk(Coffee c) { super(c); }
+    public double cost() { return coffee.cost() + 2; }
+}
+
+class Sugar extends CoffeeDecorator {
+    public Sugar(Coffee c) { super(c); }
+    public double cost() { return coffee.cost() + 1; }
+}</code></pre>
+<h2>三、使用</h2>
+<pre><code class="language-java">Coffee coffee = new Sugar(new Milk(new SimpleCoffee()));
+// cost = 13</code></pre>
+<h2>四、应用</h2>
+<p>Java IO 流、Spring 事务管理</p>

@@ -1,0 +1,154 @@
+<h1>Redis ZSet（Sorted Set）</h1>
+
+<h2>一、ZSet 类型简介</h2>
+
+<p>ZSet 是有序集合，每个元素关联一个分数（score），按分数排序。既保持元素唯一性，又能按分数排序。</p>
+
+<pre><code class="language-mermaid">graph LR
+    A[ZSet] --> B[member:A score:100]
+    A --> C[member:B score:85]
+    A --> D[member:C score:90]</code></pre>
+
+<h2>二、基础命令</h2>
+
+<h3>添加与删除</h3>
+<pre><code class="language-bash">ZADD leaderboard 100 "player1" 85 "player2" 90 "player3"
+ZADD leaderboard XX 95 "player1"           # 只更新已存在的
+ZADD leaderboard NX 80 "player4"           # 只添加不存在的
+ZREM leaderboard "player1"                 # 删除元素
+ZREMRANGEBYRANK leaderboard 0 9            # 删除排名0-9的元素
+ZREMRANGEBYSCORE leaderboard 0 60          # 删除分数0-60的元素</code></pre>
+
+<h3>查询操作</h3>
+<pre><code class="language-bash">ZRANGE leaderboard 0 -1                    # 按分数升序获取全部
+ZRANGE leaderboard 0 -1 WITHSCORES         # 带分数
+ZREVRANGE leaderboard 0 9                  # 按分数降序，前10名
+ZRANGEBYSCORE leaderboard 80 100           # 获取分数80-100的元素
+ZREVRANGEBYSCORE leaderboard 100 80        # 分数范围降序
+ZCARD leaderboard                          # 获取元素数量
+ZCOUNT leaderboard 80 100                  # 分数范围内元素数量
+ZSCORE leaderboard "player1"               # 获取元素分数
+ZRANK leaderboard "player1"                # 获取排名（升序，从0开始）
+ZREVRANK leaderboard "player1"             # 获取排名（降序）</code></pre>
+
+<h3>分数操作</h3>
+<pre><code class="language-bash">ZINCRBY leaderboard 10 "player1"           # 增加分数
+ZINCRBY leaderboard -5 "player2"           # 减少分数</code></pre>
+
+<h3>集合运算</h3>
+<pre><code class="language-bash">ZUNIONSTORE result 2 set1 set2 WEIGHTS 1 2 # 并集，权重分别为1和2
+ZINTERSTORE result 2 set1 set2             # 交集</code></pre>
+
+<h2>三、应用场景</h2>
+
+<h3>1. 排行榜</h3>
+<pre><code class="language-java">// 添加玩家分数
+jedis.zadd("game:leaderboard", 1000, "player:1001");
+jedis.zadd("game:leaderboard", 1500, "player:1002");
+
+// 更新分数
+jedis.zincrby("game:leaderboard", 100, "player:1001");
+
+// 获取前10名
+Set<Tuple> top10 = jedis.zrevrangeWithScores("game:leaderboard", 0, 9);
+for (Tuple tuple : top10) {
+    System.out.println(tuple.getElement() + ": " + tuple.getScore());
+}
+
+// 获取玩家排名
+Long rank = jedis.zrevrank("game:leaderboard", "player:1001");
+
+// 获取玩家分数
+Double score = jedis.zscore("game:leaderboard", "player:1001");
+
+// 获取玩家周边排名（前2名和后2名）
+Long targetRank = jedis.zrevrank("game:leaderboard", "player:1001");
+Set<String> nearby = jedis.zrevrange("game:leaderboard", targetRank - 2, targetRank + 2);</code></pre>
+
+<h3>2. 延时队列</h3>
+<pre><code class="language-java">// 添加延时任务（score为执行时间戳）
+long delayTime = System.currentTimeMillis() / 1000 + 300; // 5分钟后
+jedis.zadd("delay:queue", delayTime, "task:1001");
+
+// 消费到期任务
+while (true) {
+    Set<Tuple> tasks = jedis.zrangeWithScores("delay:queue", 0, 0);
+    if (tasks != null && !tasks.isEmpty()) {
+        Tuple task = tasks.iterator().next();
+        if (task.getScore() <= System.currentTimeMillis() / 1000) {
+            // 任务到期，处理
+            String taskId = task.getElement();
+            // 删除并处理
+            jedis.zrem("delay:queue", taskId);
+            processTask(taskId);
+        }
+    }
+    Thread.sleep(1000);
+}</code></pre>
+
+<h3>3. 时间线/动态</h3>
+<pre><code class="language-java">// 发布动态（score为时间戳）
+long timestamp = System.currentTimeMillis();
+jedis.zadd("user:1:timeline", timestamp, "post:1001");
+
+// 获取最新动态
+Set<String> posts = jedis.zrevrange("user:1:timeline", 0, 19);
+
+// 获取某个时间段的动态
+Set<String> posts = jedis.zrangeByScore("user:1:timeline", 
+    startTime, endTime);</code></pre>
+
+<h3>4. 滑动窗口限流</h3>
+<pre><code class="language-java">// 记录请求（score为时间戳）
+String key = "rate_limit:" + userId;
+long now = System.currentTimeMillis();
+jedis.zadd(key, now, now + "_" + UUID.randomUUID().toString());
+
+// 移除窗口外的记录
+jedis.zremrangeByScore(key, 0, now - 60000); // 保留最近60秒
+
+// 获取窗口内请求数
+long count = jedis.zcard(key);
+if (count > 100) {
+    throw new RateLimitException("请求过于频繁");
+}
+
+// 设置过期时间
+jedis.expire(key, 60);</code></pre>
+
+<h2>四、内部实现</h2>
+
+<p>ZSet 同时使用两种数据结构：</p>
+<ul>
+  <li><strong>skiplist（跳表）</strong>：按分数排序，支持范围查询</li>
+  <li><strong>hashtable（哈希表）</strong>：存储成员到分数的映射，保证查找效率</li>
+</ul>
+
+<pre><code class="language-c">typedef struct zset {
+    dict *dict;           // 哈希表，成员->分数
+    zskiplist *zsl;       // 跳表，按分数排序
+} zset;</code></pre>
+
+<h2>五、跳表原理</h2>
+
+<p>跳表是多层链表，通过随机层数实现快速查找：</p>
+
+<pre><code class="language-mermaid">graph TD
+    L3[Level 3] --> N1_3[1]
+    L2[Level 2] --> N1_2[1] --> N4_2[4] --> N7_2[7]
+    L1[Level 1] --> N1_1[1] --> N3_1[3] --> N4_1[4] --> N6_1[6] --> N7_1[7]
+    
+    style N1_3 fill:#f99
+    style N4_2 fill:#f99
+    style N7_2 fill:#f99</code></pre>
+
+<p>时间复杂度：查找 O(log N)，插入 O(log N)</p>
+
+<h2>六、注意事项</h2>
+<ul>
+  <li>分数必须是数字，可以为负数</li>
+  <li>成员不能重复，但分数可以重复（相同分数按字典序排）</li>
+  <li>ZRANGE 是闭区间，0 -1 表示全部</li>
+  <li>大数据量时 ZRANGEBYSCORE 注意范围大小</li>
+  <li>使用 ZREVRANGE 获取排行榜比 ZRANGE 再反转更高效</li>
+</ul>

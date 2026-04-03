@@ -1,0 +1,155 @@
+<h1>Spring IoC 容器</h1>
+
+<h2>一、IoC 概念</h2>
+<p><strong>控制反转（Inversion of Control）</strong>：将对象创建和依赖关系管理交给容器，而非程序自己控制。</p>
+<p><strong>依赖注入（DI）</strong>：IoC 的实现方式，通过构造器、Setter 或字段注入依赖。</p>
+
+<h2>二、IoC 容器类型</h2>
+
+<table>
+  <tr><th>容器</th><th>说明</th></tr>
+  <tr><td>BeanFactory</td><td>基础容器，延迟加载</td></tr>
+  <tr><td>ApplicationContext</td><td>高级容器，预加载，功能更丰富</td></tr>
+</table>
+
+<pre><code class="language-java">// BeanFactory
+BeanFactory factory = new XmlBeanFactory(new ClassPathResource("beans.xml"));
+
+// ApplicationContext
+ApplicationContext ctx = new ClassPathXmlApplicationContext("beans.xml");
+ApplicationContext ctx = new AnnotationConfigApplicationContext(AppConfig.class);</code></pre>
+
+<h2>三、Bean 定义方式</h2>
+
+<h3>1. XML 配置</h3>
+<pre><code class="language-xml"><bean id="userService" class="com.example.UserService">
+    <property name="userDao" ref="userDao"/>
+</bean>
+
+<bean id="userDao" class="com.example.UserDaoImpl"/></code></pre>
+
+<h3>2. 注解配置</h3>
+<pre><code class="language-java">@Configuration
+public class AppConfig {
+    
+    @Bean
+    public UserDao userDao() {
+        return new UserDaoImpl();
+    }
+    
+    @Bean
+    public UserService userService() {
+        UserService service = new UserService();
+        service.setUserDao(userDao());
+        return service;
+    }
+}</code></pre>
+
+<h3>3. 组件扫描</h3>
+<pre><code class="language-java">@Configuration
+@ComponentScan("com.example")
+public class AppConfig {
+}
+
+@Service
+public class UserService {
+    @Autowired
+    private UserDao userDao;
+}</code></pre>
+
+<h2>四、依赖注入方式</h2>
+
+<h3>1. 构造器注入（推荐）</h3>
+<pre><code class="language-java">@Service
+public class UserService {
+    private final UserDao userDao;
+    
+    @Autowired  // Spring 4.3+ 可省略
+    public UserService(UserDao userDao) {
+        this.userDao = userDao;
+    }
+}</code></pre>
+
+<h3>2. Setter 注入</h3>
+<pre><code class="language-java">@Service
+public class UserService {
+    private UserDao userDao;
+    
+    @Autowired
+    public void setUserDao(UserDao userDao) {
+        this.userDao = userDao;
+    }
+}</code></pre>
+
+<h3>3. 字段注入</h3>
+<pre><code class="language-java">@Service
+public class UserService {
+    @Autowired
+    private UserDao userDao;
+}</code></pre>
+
+<h2>五、@Autowired vs @Resource</h2>
+
+<table>
+  <tr><th>特性</th><th>@Autowired</th><th>@Resource</th></tr>
+  <tr><td>来源</td><td>Spring</td><td>JSR-250（Java 标准）</td></tr>
+  <tr><td>匹配规则</td><td>先按类型，再按名称</td><td>先按名称，再按类型</td></tr>
+  <tr><td>required</td><td>支持 required=false</td><td>无</td></tr>
+</table>
+
+<h2>六、循环依赖解决</h2>
+
+<p>Spring 通过三级缓存解决单例 Bean 的循环依赖：</p>
+
+<pre><code class="language-mermaid">graph LR
+    A[一级缓存<br>singletonObjects<br>完整 Bean] --> B[二级缓存<br>earlySingletonObjects<br>早期引用]
+    B --> C[三级缓存<br>singletonFactories<br>ObjectFactory]</code></pre>
+
+<p>仅支持单例 + 非构造器注入的场景。</p>
+
+<h2>七、@Bean 方法模式</h2>
+
+<pre><code class="language-java">@Configuration
+public class DataSourceConfig {
+    
+    @Bean(destroyMethod = "close")
+    @Primary  // 首选
+    public DataSource dataSource() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl("jdbc:mysql://localhost/test");
+        return new HikariDataSource(config);
+    }
+    
+    @Bean
+    @Profile("test")  // 特定环境
+    public DataSource testDataSource() {
+        return new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .build();
+    }
+    
+    @Bean
+    @ConditionalOnProperty(name = "cache.enabled", havingValue = "true")
+    public CacheManager cacheManager() {
+        return new ConcurrentMapCacheManager();
+    }
+}</code></pre>
+
+<h2>八、环境抽象</h2>
+
+<pre><code class="language-java">@Configuration
+@PropertySource("classpath:app.properties")
+public class AppConfig {
+    
+    @Value("${app.name}")
+    private String appName;
+    
+    @Value("${app.timeout:30}")  // 默认值
+    private int timeout;
+}
+
+// 或 Environment API
+@Autowired
+private Environment env;
+
+String name = env.getProperty("app.name");</code></pre>

@@ -1,0 +1,123 @@
+<h1>Java CopyOnWrite 容器</h1>
+
+<h2>一、简介</h2>
+<p>CopyOnWrite 容器（CopyOnWriteArrayList、CopyOnWriteArraySet）是读多写少场景下的线程安全集合，读操作无锁。</p>
+
+<h2>二、实现原理</h2>
+
+<pre><code class="language-mermaid">graph LR
+    A[写入操作] --> B[加锁]
+    B --> C[复制新数组]
+    C --> D[修改新数组]
+    D --> E[替换引用]
+    E --> F[释放锁]
+    
+    G[读取操作] --> H[直接读取<br>无需加锁]</code></pre>
+
+<h2>三、CopyOnWriteArrayList</h2>
+
+<pre><code class="language-java">import java.util.concurrent.CopyOnWriteArrayList;
+
+CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
+
+// 写操作：复制整个数组
+list.add("A");      // 加锁 -> 复制 -> 添加 -> 替换引用
+list.remove("B");   // 同上
+
+// 读操作：直接读，无锁
+String s = list.get(0);      // 无锁
+int size = list.size();      // 无锁
+for (String item : list) {   // 迭代无锁，遍历的是快照
+    System.out.println(item);
+}</code></pre>
+
+<h2>四、源码分析</h2>
+
+<pre><code class="language-java">public boolean add(E e) {
+    final ReentrantLock lock = this.lock;
+    lock.lock();
+    try {
+        Object[] elements = getArray();
+        int len = elements.length;
+        // 复制新数组
+        Object[] newElements = Arrays.copyOf(elements, len + 1);
+        newElements[len] = e;
+        // 原子替换
+        setArray(newElements);
+        return true;
+    } finally {
+        lock.unlock();
+    }
+}
+
+public E get(int index) {
+    // 读操作无锁
+    return get(getArray(), index);
+}</code></pre>
+
+<h2>五、迭代器特性</h2>
+
+<pre><code class="language-java">CopyOnWriteArrayList<String> list = new CopyOnWriteArrayList<>();
+list.add("A");
+list.add("B");
+
+for (String s : list) {
+    System.out.println(s);
+    list.add("C");  // 不会抛 ConcurrentModificationException
+}
+
+// 输出 A, B（迭代的是快照，看不到新添加的 C）
+System.out.println(list);  // [A, B, C, C]</code></pre>
+
+<h2>六、适用场景</h2>
+
+<table>
+  <tr><th>场景</th><th>建议</th></tr>
+  <tr><td>读多写少（读:写 &gt; 10:1）</td><td>适合</td></tr>
+  <tr><td>事件监听器列表</td><td>适合</td></tr>
+  <tr><td>配置项列表</td><td>适合</td></tr>
+  <tr><td>写多读少</td><td>不适合，复制开销大</td></tr>
+  <tr><td>数据量大</td><td>不适合，复制成本高</td></tr>
+</table>
+
+<h2>七、实际应用</h2>
+
+<pre><code class="language-java">// 事件监听器管理
+public class EventManager {
+    private final CopyOnWriteArrayList<EventListener> listeners 
+        = new CopyOnWriteArrayList<>();
+    
+    public void addListener(EventListener listener) {
+        listeners.add(listener);
+    }
+    
+    public void removeListener(EventListener listener) {
+        listeners.remove(listener);
+    }
+    
+    public void fireEvent(Event event) {
+        // 读操作无锁，遍历安全
+        for (EventListener listener : listeners) {
+            listener.onEvent(event);
+        }
+    }
+}</code></pre>
+
+<h2>八、与 Collections.synchronizedList 对比</h2>
+
+<table>
+  <tr><th>特性</th><th>CopyOnWriteArrayList</th><th>SynchronizedList</th></tr>
+  <tr><td>读锁</td><td>无</td><td>有</td></tr>
+  <tr><td>写操作</td><td>复制数组</td><td>加锁</td></tr>
+  <tr><td>内存占用</td><td>高（两份数组）</td><td>正常</td></tr>
+  <tr><td>数据一致性</td><td>最终一致</td><td>强一致</td></tr>
+  <tr><td>迭代安全性</td><td>安全（快照）</td><td>需手动加锁</td></tr>
+</table>
+
+<h2>九、注意事项</h2>
+<ul>
+  <li>写操作会复制整个数组，大数据量时慎用</li>
+  <li>只能保证最终一致性，实时性要求高的场景不适用</li>
+  <li>适合存储监听器、配置等相对稳定的数据</li>
+  <li>addIfAbsent 等复合操作非原子</li>
+</ul>

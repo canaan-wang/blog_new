@@ -1,0 +1,151 @@
+<h1>Redis 概览</h1>
+
+<h2>一、什么是 Redis</h2>
+
+<p>Redis（Remote Dictionary Server）是开源的<strong>内存数据结构存储系统</strong>，可用作数据库、缓存、消息队列。</p>
+
+<h3>核心特点</h3>
+<ul>
+  <li><strong>内存存储</strong>：读写性能极高（10万+ QPS）</li>
+  <li><strong>丰富的数据类型</strong>：String、Hash、List、Set、Sorted Set 等</li>
+  <li><strong>持久化</strong>：支持 RDB 快照和 AOF 日志</li>
+  <li><strong>高可用</strong>：主从复制、哨兵、Cluster 集群</li>
+  <li><strong>单线程</strong>：避免竞态条件，简化设计（6.0+ 多线程处理网络IO）</li>
+</ul>
+
+<h2>二、数据类型与应用场景</h2>
+
+<table>
+  <tr><th>类型</th><th>特点</th><th>应用场景</th></tr>
+  <tr><td>String</td><td>二进制安全，最大 512MB</td><td>缓存、计数器、分布式锁</td></tr>
+  <tr><td>Hash</td><td>键值对集合</td><td>对象存储、购物车</td></tr>
+  <tr><td>List</td><td>双向链表</td><td>消息队列、时间线</td></tr>
+  <tr><td>Set</td><td>无序唯一集合</td><td>标签、共同关注</td></tr>
+  <tr><td>ZSet</td><td>有序集合，带分数</td><td>排行榜、延时队列</td></tr>
+  <tr><td>Bitmap</td><td>位图</td><td>签到、用户在线状态</td></tr>
+  <tr><td>HyperLogLog</td><td>基数统计</td><td>UV 统计</td></tr>
+  <tr><td>Geo</td><td>地理位置</td><td>附近的人、位置计算</td></tr>
+  <tr><td>Stream</td><td>日志型数据结构</td><td>消息队列（Kafka 风格）</td></tr>
+</table>
+
+<h2>三、常用命令</h2>
+
+<h3>String</h3>
+<pre><code class="language-bash">SET key value           # 设置值
+GET key                 # 获取值
+DEL key                 # 删除
+EXPIRE key 60           # 设置过期时间（秒）
+INCR counter            # 原子自增
+MSET k1 v1 k2 v2        # 批量设置</code></pre>
+
+<h3>Hash</h3>
+<pre><code class="language-bash">HSET user:1 name "Tom" age 20
+HGET user:1 name
+HGETALL user:1
+HDEL user:1 age</code></pre>
+
+<h3>List</h3>
+<pre><code class="language-bash">LPUSH queue job1        # 左侧插入
+RPOP queue              # 右侧弹出
+LRANGE list 0 -1        # 获取全部
+LLEN list               # 获取长度</code></pre>
+
+<h3>Set</h3>
+<pre><code class="language-bash">SADD tags redis         # 添加元素
+SMEMBERS tags           # 获取所有
+SISMEMBER tags redis    # 判断是否存在
+SINTER tag1 tag2        # 交集</code></pre>
+
+<h3>ZSet</h3>
+<pre><code class="language-bash">ZADD leaderboard 100 "player1"
+ZINCRBY leaderboard 10 "player1"
+ZRANGE leaderboard 0 9 WITHSCORES  # 前10名
+ZREVRANK leaderboard "player1"     # 获取排名</code></pre>
+
+<h2>四、持久化</h2>
+
+<h3>RDB（Redis Database）</h3>
+<ul>
+  <li>定时快照，保存内存数据到二进制文件</li>
+  <li>优点：文件紧凑，恢复速度快，适合备份</li>
+  <li>缺点：可能丢失最后一次快照后的数据</li>
+</ul>
+
+<h3>AOF（Append Only File）</h3>
+<ul>
+  <li>记录所有写操作命令，重启时重放</li>
+  <li>优点：数据更安全，可配置每秒/每次写入</li>
+  <li>缺点：文件较大，恢复速度较慢</li>
+</ul>
+
+<h3>混合持久化（Redis 4.0+）</h3>
+<p>RDB 全量 + AOF 增量，兼顾速度和安全性。</p>
+
+<h2>五、高可用架构</h2>
+
+<pre><code class="language-mermaid">graph TD
+    subgraph 主从复制
+        M[Master] --> S1[Slave1]
+        M --> S2[Slave2]
+    end
+    
+    subgraph 哨兵模式
+        A[Master] --> B[Slave1]
+        A --> C[Slave2]
+        S[Sentinel1] --> A
+        S --> B
+        S2[Sentinel2] --> A
+        S3[Sentinel3] --> A
+    end</code></pre>
+
+<h3>主从复制</h3>
+<ul>
+  <li>数据冗余，读写分离</li>
+  <li>手动故障转移</li>
+</ul>
+
+<h3>哨兵（Sentinel）</h3>
+<ul>
+  <li>监控主从节点状态</li>
+  <li>自动故障转移</li>
+  <li>提供发现服务</li>
+</ul>
+
+<h3>Cluster 集群</h3>
+<ul>
+  <li>数据分片（16384 个槽位）</li>
+  <li>自动故障转移</li>
+  <li>水平扩展</li>
+</ul>
+
+<h2>六、常见问题</h2>
+
+<h3>缓存穿透</h3>
+<p>查询不存在的数据，绕过缓存直达数据库。</p>
+<p>解决：布隆过滤器、缓存空值。</p>
+
+<h3>缓存击穿</h3>
+<p>热点 key 过期，瞬间大量请求打到数据库。</p>
+<p>解决：互斥锁、逻辑过期、永不过期。</p>
+
+<h3>缓存雪崩</h3>
+<p>大量 key 同时过期，数据库压力剧增。</p>
+<p>解决：过期时间加随机值、多级缓存、熔断降级。</p>
+
+<h3>大 Key 问题</h3>
+<p>单个 key  value 过大，影响性能。</p>
+<p>解决：拆分、压缩、本地缓存。</p>
+
+<h3>热 Key 问题</h3>
+<p>单个 key 访问量过高，节点负载不均。</p>
+<p>解决：本地缓存、拆分 key、读写分离。</p>
+
+<h2>七、最佳实践</h2>
+<ul>
+  <li>合理设置过期时间，避免同时失效</li>
+  <li>Key 设计规范：业务:模块:id（如 user:profile:1001）</li>
+  <li>控制 Value 大小，避免大 Key</li>
+  <li>使用连接池，避免频繁创建连接</li>
+  <li> pipeline 批量操作，减少网络往返</li>
+  <li>慎用 O(N) 命令（KEYS、FLUSHALL 等）</li>
+</ul>

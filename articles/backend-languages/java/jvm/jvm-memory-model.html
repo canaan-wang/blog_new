@@ -1,0 +1,133 @@
+<h1>JVM 内存模型（JMM）</h1>
+
+<h2>一、什么是 JMM</h2>
+<p>Java Memory Model 定义了多线程环境下共享变量的访问规则，保证程序在不同平台上有一致的并发语义。</p>
+
+<h2>二、内存结构</h2>
+
+<pre><code class="language-mermaid">graph TD
+    subgraph "主内存"
+        M[共享变量副本]
+    end
+    
+    subgraph "线程A"
+        A1[工作内存]
+        A2[本地变量]
+    end
+    
+    subgraph "线程B"
+        B1[工作内存]
+        B2[本地变量]
+    end
+    
+    M -.->|read| A1
+    A1 -.->|write| M
+    M -.->|read| B1
+    B1 -.->|write| M</code></pre>
+
+<h2>三、内存交互操作</h2>
+
+<table>
+  <tr><th>操作</th><th>作用</th></tr>
+  <tr><td>lock</td><td>锁定主内存变量</td></tr>
+  <tr><td>unlock</td><td>解锁主内存变量</td></tr>
+  <tr><td>read</td><td>从主内存读取到工作内存</td></tr>
+  <tr><td>load</td><td>将 read 的值放入工作内存副本</td></tr>
+  <tr><td>use</td><td>使用工作内存的值</td></tr>
+  <tr><td>assign</td><td>给工作内存变量赋值</td></tr>
+  <tr><td>store</td><td>将工作内存值传送到主内存</td></tr>
+  <tr><td>write</td><td>将 store 的值写入主内存变量</td></tr>
+</table>
+
+<h2>四、Happens-Before 规则</h2>
+
+<p>如果操作 A happens-before B，则 A 的结果对 B 可见。</p>
+
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>程序次序规则</td><td>同一个线程中，前面的操作 happens-before 后面的</td></tr>
+  <tr><td>锁定规则</td><td>unlock happens-before 后面对同一个锁的 lock</td></tr>
+  <tr><td>volatile 规则</td><td>写 volatile happens-before 读 volatile</td></tr>
+  <tr><td>传递性</td><td>A happens-before B，B happens-before C，则 A happens-before C</td></tr>
+  <tr><td>线程启动</td><td>Thread.start() happens-before 线程的每个动作</td></tr>
+  <tr><td>线程终止</td><td>线程的所有操作 happens-before 检测到终止</td></tr>
+  <tr><td>中断规则</td><td>interrupt() happens-before 检测到中断</td></tr>
+  <tr><td>对象终结</td><td>构造函数执行 happens-before finalize()</td></tr>
+</table>
+
+<h2>五、volatile 语义</h2>
+
+<pre><code class="language-java">public class VolatileExample {
+    private volatile boolean flag = false;
+    private int value = 0;
+    
+    public void writer() {
+        value = 42;           // 1
+        flag = true;          // 2 - volatile 写，之前的操作不会重排序到后面
+    }
+    
+    public void reader() {
+        if (flag) {           // 3 - volatile 读，之后的操作不会重排序到前面
+            System.out.println(value);  // 4 - 保证看到 42
+        }
+    }
+}</code></pre>
+
+<h3>volatile 保证</h3>
+<ul>
+  <li><strong>可见性</strong>：一个线程修改，其他线程立即可见</li>
+  <li><strong>有序性</strong>：禁止指令重排序</li>
+  <li>不保证原子性（复合操作需 synchronized 或 Atomic）</li>
+</ul>
+
+<h2>六、重排序</h2>
+
+<p>编译器和处理器为提高性能可能重排序指令，但需遵守 as-if-serial 和 happens-before。</p>
+
+<pre><code class="language-java">// 重排序示例
+int a = 1;      // 1
+int b = 2;      // 2 可能与 1 重排序
+int c = a + b;  // 3 依赖 1、2，不会重排序到前面</code></pre>
+
+<h2>七、内存屏障</h2>
+
+<table>
+  <tr><th>屏障</th><th>作用</th></tr>
+  <tr><td>LoadLoad</td><td>确保 Load1 在 Load2 之前执行</td></tr>
+  <tr><td>StoreStore</td><td>确保 Store1 在 Store2 之前执行</td></tr>
+  <tr><td>LoadStore</td><td>确保 Load 在 Store 之前执行</td></tr>
+  <tr><td>StoreLoad</td><td>确保 Store 在 Load 之前执行（开销最大）</td></tr>
+</table>
+
+<p>volatile 读写插入的屏障：</p>
+<ul>
+  <li>写：StoreStore + StoreLoad</li>
+  <li>读：LoadLoad + LoadStore</li>
+</ul>
+
+<h2>八、long/double 的特殊性</h2>
+
+<p>JMM 允许对非 volatile 的 long/double 进行 32 位分次读写（非原子）。但现代 JVM 实现通常是原子的。</p>
+
+<h2>九、final 域内存语义</h2>
+
+<pre><code class="language-java">public class FinalExample {
+    private final int value;  // final 域
+    private int normal;       // 普通域
+    
+    public FinalExample() {
+        value = 42;      // 写 final 域
+        normal = 1;      // 写普通域（可能重排序到构造器外）
+    }
+    
+    // 其他线程看到对象时，一定看到 value=42
+    // 但可能看不到 normal=1
+}</code></pre>
+
+<h2>十、实践建议</h2>
+<ul>
+  <li>多线程共享变量用 volatile 或 synchronized</li>
+  <li>复合操作（i++）用 Atomic 类</li>
+  <li>避免数据竞争（data race）</li>
+  <li>使用 java.util.concurrent 工具类</li>
+</ul>

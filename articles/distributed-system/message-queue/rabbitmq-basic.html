@@ -1,0 +1,51 @@
+<h1>RabbitMQ 基础</h1>
+
+<h2>一、RabbitMQ 简介</h2>
+<p>RabbitMQ 是开源消息队列中间件，基于 AMQP 协议，支持多种消息模式和灵活的路由。</p>
+
+<h2>二、核心概念</h2>
+<table>
+  <tr><th>概念</th><th>说明</th></tr>
+  <tr><td>Exchange</td><td>交换机，接收消息并路由到队列</td></tr>
+  <tr><td>Queue</td><td>队列，存储消息</td></tr>
+  <tr><td>Binding</td><td>绑定，Exchange 和 Queue 的路由规则</td></tr>
+  <tr><td>Routing Key</td><td>路由键，用于消息路由匹配</td></tr>
+  <tr><td>Channel</td><td>轻量级连接</td></tr>
+</table>
+
+<h2>三、Exchange 类型</h2>
+<table>
+  <tr><th>类型</th><th>说明</th></tr>
+  <tr><td>Direct</td><td>精确匹配 Routing Key</td></tr>
+  <tr><td>Fanout</td><td>广播到所有绑定队列</td></tr>
+  <tr><td>Topic</td><td>模式匹配（* 和 #）</td></tr>
+  <tr><td>Headers</td><td>根据 Header 匹配</td></tr>
+</table>
+
+<h2>四、Java 示例</h2>
+<pre><code class="language-java">// 生产者
+ConnectionFactory factory = new ConnectionFactory();
+factory.setHost("localhost");
+Connection connection = factory.newConnection();
+Channel channel = connection.createChannel();
+
+channel.queueDeclare("hello", false, false, false, null);
+channel.basicPublish("", "hello", null, "Hello".getBytes());
+
+// 消费者
+DeliverCallback callback = (tag, delivery) -> {
+    String msg = new String(delivery.getBody());
+    System.out.println("Received: " + msg);
+};
+channel.basicConsume("hello", true, callback, tag -> {});</code></pre>
+
+<h2>五、消息确认</h2>
+<pre><code class="language-java">// 手动确认
+channel.basicQos(1);
+channel.basicConsume("queue", false, callback, cancelCallback);
+
+// 确认消息
+channel.basicAck(deliveryTag, false);
+
+// 拒绝消息
+channel.basicNack(deliveryTag, false, true);</code></pre>

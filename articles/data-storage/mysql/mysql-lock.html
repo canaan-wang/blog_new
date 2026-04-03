@@ -1,0 +1,112 @@
+<h1>MySQL 锁机制</h1>
+
+<h2>一、锁分类</h2>
+
+<pre><code class="language-mermaid">graph TD
+    Lock[MySQL 锁] --> Level[按粒度]
+    Lock --> Type[按类型]
+    
+    Level --> Global[全局锁]
+    Level --> Table[表级锁]
+    Level --> Row[行级锁]
+    Level --> Page[页级锁]
+    
+    Type --> Read[读锁/共享锁 S]
+    Type --> Write[写锁/排他锁 X]</code></pre>
+
+<h2>二、全局锁</h2>
+
+<pre><code class="language-sql">-- 加全局读锁（整库只读）
+FLUSH TABLES WITH READ LOCK;
+
+-- 释放锁
+UNLOCK TABLES;
+
+-- 使用场景：全库逻辑备份
+-- 缺点：业务完全停滞</code></pre>
+
+<h2>三、表级锁</h2>
+
+<h3>MyISAM 表锁</h3>
+<pre><code class="language-sql">-- 加读锁（其他会话可读，不可写）
+LOCK TABLES my_table READ;
+
+-- 加写锁（独占）
+LOCK TABLES my_table WRITE;
+
+-- 解锁
+UNLOCK TABLES;</code></pre>
+
+<h3>InnoDB 意向锁</h3>
+<pre><code class="language-sql">-- 意向共享锁（IS）：事务准备给某些行加 S 锁
+-- 意向排他锁（IX）：事务准备给某些行加 X 锁
+
+-- 兼容性矩阵
+--       IS  IX  S   X
+-- IS    Y   Y   Y   N
+-- IX    Y   Y   N   N
+-- S     Y   N   Y   N
+-- X     N   N   N   N</code></pre>
+
+<h2>四、行级锁（InnoDB）</h2>
+
+<pre><code class="language-sql">-- 共享锁（S）
+SELECT * FROM user WHERE id = 1 LOCK IN SHARE MODE;
+
+-- 排他锁（X）
+SELECT * FROM user WHERE id = 1 FOR UPDATE;
+
+-- 更新自动加 X 锁
+UPDATE user SET name = 'Alice' WHERE id = 1;</code></pre>
+
+<h2>五、行锁算法</h2>
+
+<table>
+  <tr><th>算法</th><th>说明</th><th>适用场景</th></tr>
+  <tr><td>Record Lock</td><td>锁定单个记录</td><td>等值查询（唯一索引）</td></tr>
+  <tr><td>Gap Lock</td><td>锁定间隙，不包含记录本身</td><td>范围查询，防止幻读</td></tr>
+  <tr><td>Next-Key Lock</td><td>Record + Gap Lock</td><td>默认行锁算法</td></tr>
+</table>
+
+<pre><code class="language-sql">-- 表中有记录 id=10, 20, 30
+-- Next-Key Lock 锁定区间
+-- (-∞, 10], (10, 20], (20, 30], (30, +∞)
+
+SELECT * FROM user WHERE id > 15 FOR UPDATE;
+-- 锁定 (10,20], (20,30], (30,+∞)</code></pre>
+
+<h2>六、锁等待与死锁</h2>
+
+<pre><code class="language-sql">-- 查看锁等待
+SHOW ENGINE INNODB STATUS;
+
+-- 查看当前锁
+SELECT * FROM information_schema.INNODB_LOCKS;
+SELECT * FROM information_schema.INNODB_LOCK_WAITS;
+
+-- 死锁检测
+-- MySQL 自动检测并回滚代价较小的事务</code></pre>
+
+<h2>七、乐观锁 vs 悲观锁</h2>
+
+<table>
+  <tr><th>特性</th><th>悲观锁</th><th>乐观锁</th></tr>
+  <tr><td>实现</td><td>SELECT FOR UPDATE</td><td>版本号/CAS</td></tr>
+  <tr><td>冲突处理</td><td>先加锁</td><td>提交时检测</td></tr>
+  <tr><td>适用</td><td>写多读少</td><td>读多写少</td></tr>
+  <tr><td>并发度</td><td>低</td><td>高</td></tr>
+</table>
+
+<pre><code class="language-sql">-- 乐观锁实现
+UPDATE product 
+SET stock = stock - 1, version = version + 1 
+WHERE id = 1 AND version = 1;</code></pre>
+
+<h2>八、锁优化建议</h2>
+<ul>
+  <li>尽量使用行锁而非表锁（InnoDB）</li>
+  <li>索引让行锁更精确</li>
+  <li>控制事务大小，减少锁持有时间</li>
+  <li>按固定顺序访问资源，避免死锁</li>
+  <li>使用乐观锁减少锁竞争</li>
+</ul>

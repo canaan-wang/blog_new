@@ -1,0 +1,105 @@
+<h1>Redis Set</h1>
+
+<h2>一、Set 类型简介</h2>
+
+<p>Set 是无序唯一集合，基于哈希表实现，支持交并差运算。</p>
+
+<h2>二、基础命令</h2>
+
+<h3>添加与删除</h3>
+<pre><code class="language-bash">SADD tags redis java python      # 添加元素
+SREM tags java                   # 删除元素
+SPOP tags                        # 随机删除并返回一个元素
+SPOP tags 3                      # 随机删除并返回3个元素</code></pre>
+
+<h3>查询操作</h3>
+<pre><code class="language-bash">SMEMBERS tags                    # 获取所有元素
+SISMEMBER tags redis             # 判断元素是否存在
+SCARD tags                       # 获取集合大小
+SRANDMEMBER tags                 # 随机获取一个元素（不删除）
+SRANDMEMBER tags 3               # 随机获取3个元素</code></pre>
+
+<h3>集合运算</h3>
+<pre><code class="language-bash">SINTER tag1 tag2                 # 交集
+SINTERSTORE result tag1 tag2     # 交集并存储
+SUNION tag1 tag2                 # 并集
+SUNIONSTORE result tag1 tag2     # 并集并存储
+SDIFF tag1 tag2                  # 差集（tag1有但tag2没有）
+SDIFFSTORE result tag1 tag2      # 差集并存储</code></pre>
+
+<h2>三、应用场景</h2>
+
+<h3>1. 标签系统</h3>
+<pre><code class="language-java">// 给文章添加标签
+jedis.sadd("post:1:tags", "java", "redis", "database");
+
+// 获取文章标签
+Set<String> tags = jedis.smembers("post:1:tags");
+
+// 查找有相同标签的文章
+jedis.sadd("tag:java:posts", "1", "2", "3");
+jedis.sadd("tag:redis:posts", "1", "4");
+
+// 同时有java和redis标签的文章
+Set<String> posts = jedis.sinter("tag:java:posts", "tag:redis:posts");</code></pre>
+
+<h3>2. 共同好友/关注</h3>
+<pre><code class="language-java">// 用户关注的人
+jedis.sadd("user:1:following", "2", "3", "4");
+jedis.sadd("user:2:following", "3", "4", "5");
+
+// 共同关注
+Set<String> common = jedis.sinter("user:1:following", "user:2:following");
+
+// 可能认识的人（user:2关注但user:1没关注的）
+Set<String> suggest = jedis.sdiff("user:2:following", "user:1:following");</code></pre>
+
+<h3>3. 抽奖系统</h3>
+<pre><code class="language-java">// 添加参与者
+jedis.sadd("lottery:1:participants", "user1", "user2", "user3", "user4", "user5");
+
+// 随机抽取3个获奖者
+List<String> winners = jedis.srandmember("lottery:1:participants", 3);
+
+// 随机抽取并移除（不重复中奖）
+List<String> winners = jedis.spop("lottery:1:participants", 3);</code></pre>
+
+<h3>4. 点赞/收藏</h3>
+<pre><code class="language-java">// 点赞
+jedis.sadd("post:1:likes", "user:1001");
+
+// 取消点赞
+jedis.srem("post:1:likes", "user:1001");
+
+// 是否点赞
+boolean isLiked = jedis.sismember("post:1:likes", "user:1001");
+
+// 点赞数
+long likeCount = jedis.scard("post:1:likes");</code></pre>
+
+<h3>5. 在线用户统计</h3>
+<pre><code class="language-java">// 用户上线
+jedis.sadd("online:users", "user:1001");
+jedis.expire("online:users", 300); // 5分钟过期
+
+// 获取在线人数
+long onlineCount = jedis.scard("online:users");</code></pre>
+
+<h2>四、内部实现</h2>
+
+<p>Set 底层使用两种数据结构：</p>
+<ul>
+  <li><strong>intset（整数集合）</strong>：元素都是整数且数量少时使用</li>
+  <li><strong>hashtable（哈希表）</strong>：元素包含字符串或数量多时</li>
+</ul>
+
+<pre><code class="language-bash"># 配置
+set-max-intset-entries 512       # 整数集合最大元素数</code></pre>
+
+<h2>五、注意事项</h2>
+<ul>
+  <li>Set 不保持插入顺序，需要有序用 ZSet</li>
+  <li>SMEMBERS 在大集合时性能较差，使用 SSCAN 分批获取</li>
+  <li>集合运算复杂度 O(N)，数据量大时考虑在应用层处理</li>
+  <li>使用 SISMEMBER 判断存在性比 SMEMBERS 后 contains 高效</li>
+</ul>

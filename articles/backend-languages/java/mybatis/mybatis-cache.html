@@ -1,0 +1,150 @@
+<h1>MyBatis 缓存机制</h1>
+
+<h2>一、缓存层级</h2>
+
+<p>MyBatis 提供两级缓存：</p>
+
+<pre><code class="language-mermaid">graph TD
+    A[查询] --> B{一级缓存<br>SqlSession}
+    B -->|命中| C[返回结果]
+    B -->|未命中| D{二级缓存<br>Namespace}
+    D -->|命中| E[返回结果]
+    D -->|未命中| F[查询数据库]
+    F --> G[存入二级缓存]
+    G --> H[存入一级缓存]
+    H --> C</code></pre>
+
+<h2>二、一级缓存（默认开启）</h2>
+
+<p>SqlSession 级别，会话期间有效。</p>
+
+<pre><code class="language-java">SqlSession session = sqlSessionFactory.openSession();
+UserMapper mapper = session.getMapper(UserMapper.class);
+
+// 第一次查询，命中数据库
+User user1 = mapper.selectById(1L);
+
+// 同一 SqlSession，命中一级缓存
+User user2 = mapper.selectById(1L);
+System.out.println(user1 == user2);  // true
+
+session.close();  // 缓存失效</code></pre>
+
+<h3>清空时机</h3>
+<ul>
+  <li>执行 commit/rollback</li>
+  <li>执行 update/insert/delete</li>
+  <li>调用 clearCache()</li>
+  <li>SqlSession 关闭</li>
+</ul>
+
+<h2>三、二级缓存（需配置）</h2>
+
+<p>Mapper Namespace 级别，多个 SqlSession 共享。</p>
+
+<h3>1. 开启全局配置</h3>
+<pre><code class="language-xml"><settings>
+    <setting name="cacheEnabled" value="true"/>
+</settings></code></pre>
+
+<h3>2. Mapper 配置</h3>
+<pre><code class="language-xml"><mapper namespace="com.example.UserMapper">
+    <!-- 开启二级缓存 -->
+    <cache
+        eviction="LRU"
+        flushInterval="60000"
+        size="512"
+        readOnly="true"/>
+    
+    <!-- 或注解方式 -->
+    <select id="selectById" resultType="User" useCache="true">
+        SELECT * FROM user WHERE id = #{id}
+    </select>
+</mapper></code></pre>
+
+<h3>3. 注解方式</h3>
+<pre><code class="language-java">@CacheNamespace(
+    eviction = FifoCache.class,
+    flushInterval = 60000,
+    size = 512,
+    readWrite = false
+)
+public interface UserMapper {
+    @Select("SELECT * FROM user WHERE id = #{id}")
+    @Options(useCache = true)
+    User selectById(Long id);
+}</code></pre>
+
+<h2>四、缓存策略</h2>
+
+<table>
+  <tr><th>策略</th><th>说明</th></tr>
+  <tr><td>LRU</td><td>最近最少使用（默认）</td></tr>
+  <tr><td>FIFO</td><td>先进先出</td></tr>
+  <tr><td>SOFT</td><td>软引用</td></tr>
+  <tr><td>WEAK</td><td>弱引用</td></tr>
+</table>
+
+<h2>五、缓存实现</h2>
+
+<h3>集成 Ehcache</h3>
+<pre><code class="language-xml"><dependency>
+    <groupId>org.mybatis.caches</groupId>
+    <artifactId>mybatis-ehcache</artifactId>
+</dependency></code></pre>
+
+<pre><code class="language-xml"><cache type="org.mybatis.caches.ehcache.EhcacheCache"/></code></pre>
+
+<h3>集成 Redis</h3>
+<pre><code class="language-java">public class RedisCache implements Cache {
+    private final String id;
+    private final JedisPool jedisPool;
+    
+    public RedisCache(String id) {
+        this.id = id;
+        this.jedisPool = new JedisPool("localhost");
+    }
+    
+    @Override
+    public String getId() { return id; }
+    
+    @Override
+    public void putObject(Object key, Object value) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.setex(serialize(key), 3600, serialize(value));
+        }
+    }
+    
+    @Override
+    public Object getObject(Object key) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            return deserialize(jedis.get(serialize(key)));
+        }
+    }
+    // ... 其他方法
+}</code></pre>
+
+<h2>六、缓存失效问题</h2>
+
+<h3>1. 脏读</h3>
+<p>二级缓存导致其他 SqlSession 读到旧数据。解决方案：</p>
+<ul>
+  <li>设置合适的 flushInterval</li>
+  <li>关联查询使用 <cache-ref> 共享缓存</li>
+  <li>关键数据禁用缓存：useCache="false"</li>
+</ul>
+
+<h3>2. 关联表更新</h3>
+<pre><code class="language-xml"><mapper namespace="com.example.OrderMapper">
+    <!-- 引用 UserMapper 的缓存 -->
+    <cache-ref namespace="com.example.UserMapper"/>
+</mapper></code></pre>
+
+<h2>七、最佳实践</h2>
+<ul>
+  <li>频繁查询、少修改的数据适合缓存</li>
+  <li>分布式环境用 Redis 等集中缓存</li>
+  <li>设置合理的过期时间</li>
+  <li>大对象不要缓存（内存压力）</li>
+  <li>关键业务查询强制刷新缓存</li>
+</ul>

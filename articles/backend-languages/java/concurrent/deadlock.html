@@ -1,0 +1,94 @@
+<h1>Java 死锁</h1>
+
+<h2>一、死锁条件</h2>
+<p>Coffman 条件（必须同时满足）：</p>
+<ol>
+  <li><strong>互斥</strong>：资源一次只能被一个进程占用</li>
+  <li><strong>占有等待</strong>：持有资源的同时等待其他资源</li>
+  <li><strong>不可抢占</strong>：已分配的资源不能被强制剥夺</li>
+  <li><strong>循环等待</strong>：进程间形成循环等待链</li>
+</ol>
+
+<h2>二、死锁示例</h2>
+<pre><code class="language-java">public class DeadlockDemo {
+    private static final Object lockA = new Object();
+    private static final Object lockB = new Object();
+    
+    public static void main(String[] args) {
+        Thread t1 = new Thread(() -> {
+            synchronized (lockA) {
+                System.out.println("T1: Holding lock A");
+                sleep(100);
+                synchronized (lockB) {  // 等待 lockB
+                    System.out.println("T1: Holding lock B");
+                }
+            }
+        });
+        
+        Thread t2 = new Thread(() -> {
+            synchronized (lockB) {
+                System.out.println("T2: Holding lock B");
+                sleep(100);
+                synchronized (lockA) {  // 等待 lockA
+                    System.out.println("T2: Holding lock A");
+                }
+            }
+        });
+        
+        t1.start();
+        t2.start();
+    }
+}</code></pre>
+
+<h2>三、死锁检测</h2>
+<pre><code class="language-bash"># 使用 jstack 检测
+jstack -l PID | grep -A 50 "deadlock"
+
+# 输出示例
+Found one Java-level deadlock:
+=============================
+"Thread-1":
+  waiting to lock monitor 0x00007f8b4c0 (object 0x123, a java.lang.Object),
+  which is held by "Thread-0"
+"Thread-0":
+  waiting to lock monitor 0x00007f8b4d0 (object 0x456, a java.lang.Object),
+  which is held by "Thread-1"</code></pre>
+
+<h2>四、死锁预防</h2>
+<h3>1. 资源有序分配</h3>
+<pre><code class="language-java">// 按固定顺序获取锁
+private void safeTransfer(Account from, Account to, int amount) {
+    Account first = from.id < to.id ? from : to;
+    Account second = from.id < to.id ? to : from;
+    
+    synchronized (first) {
+        synchronized (second) {
+            // 转账操作
+        }
+    }
+}</code></pre>
+
+<h3>2. 超时获取</h3>
+<pre><code class="language-java">if (lock.tryLock(3, TimeUnit.SECONDS)) {
+    try {
+        // 操作
+    } finally {
+        lock.unlock();
+    }
+} else {
+    // 超时处理
+}</code></pre>
+
+<h3>3. 使用并发工具类</h3>
+<pre><code class="language-java">// 使用 ConcurrentHashMap 替代 Hashtable
+// 使用 CopyOnWriteArrayList
+// 使用阻塞队列</code></pre>
+
+<h2>五、死锁避免 - 银行家算法</h2>
+<p>动态检测资源分配状态，确保不会进入不安全状态。</p>
+
+<h2>六、死锁解除</h2>
+<ul>
+  <li><strong>进程终止</strong>：终止一个或多个死锁进程</li>
+  <li><strong>资源剥夺</strong>：强行剥夺资源分配给其他进程</li>
+</ul>

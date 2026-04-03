@@ -1,0 +1,116 @@
+<h1>JVM 参数配置</h1>
+
+<h2>一、标准参数</h2>
+
+<pre><code class="language-bash">java -version
+java -help
+java -cp classpath MainClass
+java -jar app.jar</code></pre>
+
+<h2>二、堆内存参数</h2>
+
+<table>
+  <tr><th>参数</th><th>说明</th><th>示例</th></tr>
+  <tr><td>-Xms</td><td>初始堆大小</td><td>-Xms512m</td></tr>
+  <tr><td>-Xmx</td><td>最大堆大小</td><td>-Xmx2g</td></tr>
+  <tr><td>-Xmn</td><td>新生代大小</td><td>-Xmn256m</td></tr>
+  <tr><td>-XX:NewRatio</td><td>老年代/新生代比例</td><td>-XX:NewRatio=2</td></tr>
+  <tr><td>-XX:SurvivorRatio</td><td>Eden/Survivor 比例</td><td>-XX:SurvivorRatio=8</td></tr>
+</table>
+
+<pre><code class="language-bash"># 推荐设置：Xms = Xmx，避免动态扩缩容
+java -Xms2g -Xmx2g -Xmn512m -jar app.jar</code></pre>
+
+<h2>三、元空间参数</h2>
+
+<table>
+  <tr><th>参数</th><th>说明</th></tr>
+  <tr><td>-XX:MetaspaceSize</td><td>初始元空间大小（JDK8+）</td></tr>
+  <tr><td>-XX:MaxMetaspaceSize</td><td>最大元空间大小</td></tr>
+  <tr><td>-XX:PermSize</td><td>初始永久代（JDK7）</td></tr>
+  <tr><td>-XX:MaxPermSize</td><td>最大永久代（JDK7）</td></tr>
+</table>
+
+<pre><code class="language-bash">java -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=256m</code></pre>
+
+<h2>四、GC 参数</h2>
+
+<h3>选择垃圾收集器</h3>
+<table>
+  <tr><th>参数</th><th>收集器</th><th>适用场景</th></tr>
+  <tr><td>-XX:+UseSerialGC</td><td>Serial + Serial Old</td><td>单核/小内存</td></tr>
+  <tr><td>-XX:+UseParNewGC</td><td>ParNew + CMS</td><td>多核</td></tr>
+  <tr><td>-XX:+UseConcMarkSweepGC</td><td>ParNew + CMS</td><td>低延迟</td></tr>
+  <tr><td>-XX:+UseParallelGC</td><td>Parallel Scavenge + Parallel Old</td><td>高吞吐（默认）</td></tr>
+  <tr><td>-XX:+UseG1GC</td><td>G1</td><td>大堆/低延迟（JDK9+默认）</td></tr>
+  <tr><td>-XX:+UseZGC</td><td>ZGC</td><td>超低延迟（JDK15+）</td></tr>
+</table>
+
+<h3>GC 调优参数</h3>
+<pre><code class="language-bash"># Parallel GC 调优
+-XX:MaxGCPauseMillis=200    # 最大停顿时间目标
+-XX:GCTimeRatio=99          # GC 时间占比 1%
+
+# CMS 调优
+-XX:CMSInitiatingOccupancyFraction=70  # 老年代70%时触发CMS
+-XX:+UseCMSCompactAtFullCollection     # Full GC 时压缩
+-XX:CMSFullGCsBeforeCompaction=0       # 每次 Full GC 都压缩
+
+# G1 调优
+-XX:MaxGCPauseMillis=200
+-XX:G1HeapRegionSize=16m
+-XX:InitiatingHeapOccupancyPercent=45</code></pre>
+
+<h2>五、日志参数</h2>
+
+<pre><code class="language-bash"># JDK 8
+-XX:+PrintGCDetails
+-XX:+PrintGCDateStamps
+-Xloggc:/var/log/gc.log
+-XX:+UseGCLogFileRotation
+-XX:NumberOfGCLogFiles=10
+-XX:GCLogFileSize=100M
+
+# JDK 9+
+-Xlog:gc*:file=/var/log/gc.log:time,uptime,level,tags:filecount=10,filesize=100M</code></pre>
+
+<h2>六、OOM 处理</h2>
+
+<pre><code class="language-bash"># OOM 时自动生成堆转储
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath=/var/log/heapdump.hprof
+
+# OOM 时执行脚本
+-XX:OnOutOfMemoryError="sh /cleanup.sh"
+
+# 退出前打印类直方图
+-XX:+PrintClassHistogramBeforeFullGC</code></pre>
+
+<h2>七、常用配置组合</h2>
+
+<h3>Web 应用（8G 内存）</h3>
+<pre><code class="language-bash">java \
+  -Xms4g -Xmx4g \
+  -XX:MetaspaceSize=256m \
+  -XX:MaxMetaspaceSize=512m \
+  -XX:+UseG1GC \
+  -XX:MaxGCPauseMillis=200 \
+  -XX:+HeapDumpOnOutOfMemoryError \
+  -XX:HeapDumpPath=/logs/heapdump.hprof \
+  -Xlog:gc*:file=/logs/gc.log:time,uptime,level,tags \
+  -jar app.jar</code></pre>
+
+<h3>微服务（2G 内存）</h3>
+<pre><code class="language-bash">java \
+  -Xms1g -Xmx1g \
+  -XX:+UseParallelGC \
+  -XX:MaxGCPauseMillis=100 \
+  -jar service.jar</code></pre>
+
+<h2>八、查看当前参数</h2>
+
+<pre><code class="language-bash"># 查看全部参数
+java -XX:+PrintFlagsFinal -version | grep "= true"
+
+# 查看修改过的参数
+jinfo -flags PID</code></pre>

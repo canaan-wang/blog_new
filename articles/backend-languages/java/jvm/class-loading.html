@@ -1,0 +1,161 @@
+<h1>JVM 类加载机制</h1>
+
+<h2>一、类加载过程</h2>
+
+<pre><code class="language-mermaid">graph LR
+    A[加载 Loading] --> B[验证 Verification]
+    B --> C[准备 Preparation]
+    C --> D[解析 Resolution]
+    D --> E[初始化 Initialization]
+    E --> F[使用 Using]
+    F --> G[卸载 Unloading]</code></pre>
+
+<h3>1. 加载</h3>
+<ul>
+  <li>通过全限定名获取二进制字节流</li>
+  <li>将静态存储结构转化为方法区运行时数据结构</li>
+  <li>生成 Class 对象，作为方法区数据的访问入口</li>
+</ul>
+
+<h3>2. 验证</h3>
+<ul>
+  <li><strong>文件格式验证</strong>：魔数、版本号等</li>
+  <li><strong>元数据验证</strong>：语义分析，如是否有父类</li>
+  <li><strong>字节码验证</strong>：控制流、数据流分析</li>
+  <li><strong>符号引用验证</strong>：能否找到对应类</li>
+</ul>
+
+<h3>3. 准备</h3>
+<p>为类变量分配内存并设置默认初始值：</p>
+<pre><code class="language-java">public static int value = 123;
+// 准备阶段：value = 0（默认）
+// 初始化阶段：value = 123</code></pre>
+
+<h3>4. 解析</h3>
+<p>将常量池中的符号引用转为直接引用。</p>
+
+<h3>5. 初始化</h3>
+<p>执行类构造器 &lt;clinit&gt; 方法，包括：</p>
+<ul>
+  <li>静态变量赋值</li>
+  <li>静态代码块执行</li>
+</ul>
+
+<h2>二、类加载器</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[自定义类加载器] --> B[ApplicationClassLoader]
+    B --> C[ExtensionClassLoader]
+    C --> D[BootstrapClassLoader]
+    
+    D --> E[< JAVA_HOME >/lib]</code></pre>
+
+<table>
+  <tr><th>加载器</th><th>加载路径</th><th>实现语言</th></tr>
+  <tr><td>Bootstrap</td><td>JAVA_HOME/jre/lib</td><td>C++</td></tr>
+  <tr><td>Extension</td><td>ext 目录</td><td>Java</td></tr>
+  <tr><td>Application</td><td>classpath</td><td>Java</td></tr>
+  <tr><td>自定义</td><td>自定义路径</td><td>Java</td></tr>
+</table>
+
+<h2>三、双亲委派模型</h2>
+
+<pre><code class="language-java">protected Class<?> loadClass(String name, boolean resolve) {
+    // 1. 检查是否已加载
+    Class<?> c = findLoadedClass(name);
+    if (c == null) {
+        // 2. 委托父加载器
+        if (parent != null) {
+            c = parent.loadClass(name, false);
+        } else {
+            c = findBootstrapClassOrNull(name);
+        }
+        // 3. 父加载器无法加载，自己加载
+        if (c == null) {
+            c = findClass(name);
+        }
+    }
+    return c;
+}</code></pre>
+
+<h3>优势</h3>
+<ul>
+  <li>避免类的重复加载</li>
+  <li>保证核心类库安全（防止自定义 java.lang.String）</li>
+</ul>
+
+<h2>四、打破双亲委派</h2>
+
+<h3>场景</h3>
+<ul>
+  <li>Tomcat：不同 Web 应用隔离</li>
+  <li>OSGi：模块化热部署</li>
+  <li>JDBC：SPI 机制</li>
+</ul>
+
+<h3>方法</h3>
+<ol>
+  <li>重写 loadClass 方法</li>
+  <li>使用线程上下文类加载器 Thread.currentThread().getContextClassLoader()</li>
+</ol>
+
+<h2>五、初始化时机</h2>
+
+<p>有且仅有以下情况会触发初始化：</p>
+<ol>
+  <li>new 实例化对象</li>
+  <li>访问静态变量（非 final）或静态方法</li>
+  <li>反射调用 Class.forName()</li>
+  <li>子类初始化触发父类初始化</li>
+  <li>执行 main() 方法的类</li>
+  <li>JDK 8+ 接口定义了 default 方法，实现类初始化</li>
+</ol>
+
+<h2>六、被动引用示例</h2>
+
+<pre><code class="language-java">public class SuperClass {
+    static {
+        System.out.println("SuperClass init");
+    }
+    public static int value = 123;
+}
+
+public class SubClass extends SuperClass {
+    static {
+        System.out.println("SubClass init");
+    }
+}
+
+// 被动引用1：通过子类访问父类静态变量
+System.out.println(SubClass.value); 
+// 输出：SuperClass init，不会触发 SubClass 初始化
+
+// 被动引用2：数组定义
+SuperClass[] arr = new SuperClass[10]; // 不会初始化
+
+// 被动引用3：常量
+public static final int CONSTANT = 123;
+System.out.println(SubClass.CONSTANT); // 编译期常量，不会初始化</code></pre>
+
+<h2>七、自定义类加载器</h2>
+
+<pre><code class="language-java">public class MyClassLoader extends ClassLoader {
+    private String path;
+    
+    @Override
+    protected Class<?> findClass(String name) {
+        byte[] data = loadClassData(name);
+        return defineClass(name, data, 0, data.length);
+    }
+    
+    private byte[] loadClassData(String name) {
+        // 从自定义路径加载类文件
+    }
+}</code></pre>
+
+<h2>八、最佳实践</h2>
+<ul>
+  <li>理解类加载过程有助于排查 ClassNotFoundException</li>
+  <li>Tomcat 等容器使用自定义类加载器实现应用隔离</li>
+  <li>SPI 机制打破双亲委派实现服务发现</li>
+</ul>

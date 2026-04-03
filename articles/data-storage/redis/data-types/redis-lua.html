@@ -1,0 +1,113 @@
+<h1>Redis Lua 脚本</h1>
+
+<h2>一、为什么用 Lua</h2>
+<ul>
+  <li><strong>原子性</strong>：脚本在 Redis 服务器单线程执行，不会被打断</li>
+  <li><strong>减少网络往返</strong>：复杂逻辑在服务端完成</li>
+  <li><strong>复用</strong>：脚本可以缓存</li>
+</ul>
+
+<h2>二、EVAL 命令</h2>
+
+<pre><code class="language-bash">EVAL script numkeys key [key ...] arg [arg ...]
+
+# 示例：简单的 GET+DEL 原子操作
+EVAL "local v = redis.call('get', KEYS[1]); redis.call('del', KEYS[1]); return v;" 1 mykey
+
+# 带参数
+EVAL "return redis.call('set', KEYS[1], ARGV[1])" 1 mykey myvalue</code></pre>
+
+<h2>三、Java 执行 Lua</h2>
+
+<pre><code class="language-java">// 简单脚本
+String lua = "return redis.call('get', KEYS[1])";
+String result = (String) jedis.eval(lua, 1, "mykey");
+
+// 带参数
+String lua = "return redis.call('set', KEYS[1], ARGV[1])";
+String result = (String) jedis.eval(lua, 
+    Collections.singletonList("mykey"), 
+    Collections.singletonList("myvalue"));
+
+// 复杂脚本：扣减库存
+String deductStock = 
+    "local stock = tonumber(redis.call('get', KEYS[1]));" +
+    "if stock == nil then return -1 end;" +
+    "if stock <= 0 then return 0 end;" +
+    "redis.call('decr', KEYS[1]);" +
+    "return 1;";
+
+Long result = (Long) jedis.eval(deductStock, 1, "stock:1001");
+// result: 1=成功, 0=库存不足, -1=key不存在</code></pre>
+
+<h2>四、脚本缓存（EVALSHA）</h2>
+
+<pre><code class="language-java">// 预加载脚本
+String lua = "return redis.call('incr', KEYS[1])";
+String sha = jedis.scriptLoad(lua);
+
+// 后续用 SHA 执行（节省带宽）
+Object result = jedis.evalsha(sha, 1, "counter");</code></pre>
+
+<h2>五、常用脚本示例</h2>
+
+<h3>限流器</h3>
+<pre><code class="language-lua">local key = KEYS[1]
+local window = tonumber(ARGV[1])  -- 时间窗口（秒）
+local limit = tonumber(ARGV[2])   -- 限制次数
+local now = tonumber(ARGV[3])     -- 当前时间戳
+
+-- 移除窗口外的记录
+redis.call('zremrangeByScore', key, 0, now - window)
+
+-- 统计当前窗口内的请求数
+local count = redis.call('zcard', key)
+
+if count < limit then
+    -- 允许通过，记录当前请求
+    redis.call('zadd', key, now, now .. '_' .. ARGV[4])
+    redis.call('expire', key, window)
+    return 1
+else
+    return 0
+end</code></pre>
+
+<h3>分布式锁释放</h3>
+<pre><code class="language-lua">if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+else
+    return 0
+end</code></pre>
+
+<h3>批量 Hash 操作</h3>
+<pre><code class="language-lua">local key = KEYS[1]
+local cursor = 0
+local result = {}
+
+repeat
+    local scan = redis.call('hscan', key, cursor)
+    cursor = tonumber(scan[1])
+    local fields = scan[2]
+    
+    for i = 1, #fields, 2 do
+        local field = fields[i]
+        local value = fields[i+1]
+        -- 处理逻辑
+        table.insert(result, {field, value})
+    end
+until cursor == 0
+
+return result</code></pre>
+
+<h2>六、调试脚本</h2>
+
+<pre><code class="language-bash"># 使用 redis-cli 调试
+redis-cli --ldb --eval script.lua key1 key2 , arg1 arg2</code></pre>
+
+<h2>七、注意事项</h2>
+<ul>
+  <li>脚本执行时间不宜过长（阻塞其他命令）</li>
+  <li>避免在脚本中使用随机命令（影响复制）</li>
+  <li>脚本中使用的 key 应该通过 KEYS 传入</li>
+  <li>Redis Cluster 下脚本涉及的 key 需在同一槽位</li>
+</ul>

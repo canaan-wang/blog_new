@@ -1,0 +1,49 @@
+<h1>工厂模式（Factory）</h1>
+
+<h2>一、简单工厂</h2>
+<pre><code class="language-java">public class ShapeFactory {
+    public static Shape create(String type) {
+        switch (type) {
+            case "circle": return new Circle();
+            case "rectangle": return new Rectangle();
+            default: throw new IllegalArgumentException();
+        }
+    }
+}</code></pre>
+
+<h2>二、工厂方法</h2>
+<pre><code class="language-java">// 抽象工厂
+public interface ShapeFactory {
+    Shape create();
+}
+
+// 具体工厂
+public class CircleFactory implements ShapeFactory {
+    public Shape create() {
+        return new Circle();
+    }
+}</code></pre>
+
+<h2>三、抽象工厂</h2>
+<pre><code class="language-java">// 产品族
+public interface GUIFactory {
+    Button createButton();
+    Checkbox createCheckbox();
+}
+
+// Windows 产品族
+public class WindowsFactory implements GUIFactory {
+    public Button createButton() {
+        return new WindowsButton();
+    }
+    public Checkbox createCheckbox() {
+        return new WindowsCheckbox();
+    }
+}</code></pre>
+
+<h2>四、应用场景</h2>
+<ul>
+  <li>对象创建逻辑复杂</li>
+  <li>需要解耦对象创建和使用</li>
+  <li>Spring BeanFactory</li>
+</ul>

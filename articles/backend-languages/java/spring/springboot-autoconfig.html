@@ -1,0 +1,131 @@
+<h1>Spring Boot 自动配置原理</h1>
+
+<h2>一、自动配置入口</h2>
+<p>@SpringBootApplication 组合了三个注解：</p>
+<ul>
+  <li>@Configuration - 标识配置类</li>
+  <li>@EnableAutoConfiguration - 启用自动配置</li>
+  <li>@ComponentScan - 组件扫描</li>
+</ul>
+
+<pre><code class="language-java">@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@SpringBootConfiguration
+@EnableAutoConfiguration
+@ComponentScan(excludeFilters = { ... })
+public @interface SpringBootApplication {
+}</code></pre>
+
+<h2>二、自动配置加载流程</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[@EnableAutoConfiguration] --> B[AutoConfigurationImportSelector]
+    B --> C[读取 META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports]
+    C --> D[获取所有候选配置类]
+    D --> E[过滤 @Conditional 条件]
+    E --> F[注册符合条件的配置]</code></pre>
+
+<h2>三、@Conditional 条件注解</h2>
+
+<table>
+  <tr><th>注解</th><th>条件</th></tr>
+  <tr><td>@ConditionalOnClass</td><td>类路径存在指定类</td></tr>
+  <tr><td>@ConditionalOnMissingClass</td><td>类路径不存在指定类</td></tr>
+  <tr><td>@ConditionalOnBean</td><td>容器中存在指定 Bean</td></tr>
+  <tr><td>@ConditionalOnMissingBean</td><td>容器中不存在指定 Bean</td></tr>
+  <tr><td>@ConditionalOnProperty</td><td>指定配置属性满足条件</td></tr>
+  <tr><td>@ConditionalOnWebApplication</td><td>是 Web 应用</td></tr>
+  <tr><td>@ConditionalOnExpression</td><td>SpEL 表达式为 true</td></tr>
+</table>
+
+<h2>四、自定义 Starter</h2>
+
+<h3>1. 创建自动配置类</h3>
+<pre><code class="language-java">@Configuration
+@ConditionalOnClass(MyService.class)
+@EnableConfigurationProperties(MyProperties.class)
+public class MyAutoConfiguration {
+    
+    @Bean
+    @ConditionalOnMissingBean  // 用户未定义时才创建
+    public MyService myService(MyProperties properties) {
+        return new MyService(properties);
+    }
+}
+
+@ConfigurationProperties(prefix = "my.starter")
+public class MyProperties {
+    private String name = "default";
+    private boolean enabled = true;
+    // getters/setters
+}</code></pre>
+
+<h3>2. 注册自动配置</h3>
+<p>创建 <code>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</code></p>
+<pre><code>com.example.autoconfigure.MyAutoConfiguration</code></pre>
+
+<h3>3. 使用 Starter</h3>
+<pre><code class="language-xml"><dependency>
+    <groupId>com.example</groupId>
+    <artifactId>my-spring-boot-starter</artifactId>
+    <version>1.0.0</version>
+</dependency></code></pre>
+
+<pre><code class="language-yaml">my:
+  starter:
+    name: custom-name
+    enabled: true</code></pre>
+
+<h2>五、自动配置源码分析</h2>
+
+<p>以 DataSourceAutoConfiguration 为例：</p>
+
+<pre><code class="language-java">@AutoConfiguration
+@ConditionalOnClass({ DataSource.class, EmbeddedDatabaseType.class })
+@ConditionalOnMissingBean(type = "io.r2dbc.spi.ConnectionFactory")
+@EnableConfigurationProperties(DataSourceProperties.class)
+@Import({ DataSourcePoolMetadataProvidersConfiguration.class,
+        DataSourceInitializationConfiguration.class })
+public class DataSourceAutoConfiguration {
+    
+    @Bean
+    @ConditionalOnMissingBean  // 用户可覆盖
+    public DataSource dataSource(DataSourceProperties properties) {
+        return properties.initializeDataSourceBuilder().build();
+    }
+}</code></pre>
+
+<h2>六、排除自动配置</h2>
+
+<pre><code class="language-java">@SpringBootApplication(exclude = {
+    DataSourceAutoConfiguration.class,
+    HibernateJpaAutoConfiguration.class
+})</code></pre>
+
+<p>或通过配置：</p>
+<pre><code class="language-yaml">spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration</code></pre>
+
+<h2>七、查看自动配置报告</h2>
+
+<pre><code class="language-yaml">debug: true  # 或 --debug</code></pre>
+
+<p>控制台输出：</p>
+<ul>
+  <li>Positive matches - 匹配的自动配置</li>
+  <li>Negative matches - 未匹配的自动配置</li>
+  <li>Exclusions - 排除的配置</li>
+</ul>
+
+<h2>八、最佳实践</h2>
+<ul>
+  <li>使用 @ConditionalOnMissingBean 允许用户覆盖</li>
+  <li>提供合理的默认值</li>
+  <li>用 @AutoConfigureOrder 控制配置顺序</li>
+  <li>将配置属性集中到 Properties 类</li>
+  <li>添加 spring-boot-configuration-processor 生成元数据</li>
+</ul>

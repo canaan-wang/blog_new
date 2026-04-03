@@ -1,0 +1,140 @@
+<h1>Spring AOP 面向切面编程</h1>
+
+<h2>一、AOP 概念</h2>
+<p>AOP（Aspect-Oriented Programming）将横切关注点（日志、事务、权限等）从业务逻辑中分离，提高模块化。</p>
+
+<h2>二、核心概念</h2>
+
+<table>
+  <tr><th>术语</th><th>说明</th></tr>
+  <tr><td>Aspect（切面）</td><td>横切关注点的模块化，包含通知和切点</td></tr>
+  <tr><td>Join Point（连接点）</td><td>程序执行点，如方法调用</td></tr>
+  <tr><td>Pointcut（切点）</td><td>匹配连接点的表达式</td></tr>
+  <tr><td>Advice（通知）</td><td>切点处执行的代码</td></tr>
+  <tr><td>Target（目标）</td><td>被代理的对象</td></tr>
+  <tr><td>Proxy（代理）</td><td>AOP 框架创建的对象</td></tr>
+</table>
+
+<h2>三、通知类型</h2>
+
+<table>
+  <tr><th>注解</th><th>执行时机</th></tr>
+  <tr><td>@Before</td><td>方法执行前</td></tr>
+  <tr><td>@After</td><td>方法执行后（无论是否异常）</td></tr>
+  <tr><td>@AfterReturning</td><td>方法成功返回后</td></tr>
+  <tr><td>@AfterThrowing</td><td>方法抛出异常后</td></tr>
+  <tr><td>@Around</td><td>环绕通知，控制方法执行</td></tr>
+</table>
+
+<h2>四、基本用法</h2>
+
+<pre><code class="language-java">@Aspect
+@Component
+public class LoggingAspect {
+    
+    // 定义切点
+    @Pointcut("execution(* com.service.*.*(..))")
+    public void serviceLayer() {}
+    
+    @Before("serviceLayer()")
+    public void logBefore(JoinPoint jp) {
+        System.out.println("调用: " + jp.getSignature());
+    }
+    
+    @AfterReturning(pointcut = "serviceLayer()", returning = "result")
+    public void logAfter(JoinPoint jp, Object result) {
+        System.out.println("返回: " + result);
+    }
+    
+    @Around("serviceLayer()")
+    public Object logAround(ProceedingJoinPoint pjp) throws Throwable {
+        long start = System.currentTimeMillis();
+        Object result = pjp.proceed();
+        long elapsed = System.currentTimeMillis() - start;
+        System.out.println(pjp.getSignature() + " 耗时: " + elapsed + "ms");
+        return result;
+    }
+}</code></pre>
+
+<h2>五、切点表达式</h2>
+
+<pre><code class="language-java">// execution: 匹配方法签名
+@Pointcut("execution(* com.service.*.*(..))")        // service 包所有方法
+@Pointcut("execution(public * *(..))")               // 所有 public 方法
+@Pointcut("execution(* *ById(Long))")                // 以 ById 结尾，参数 Long
+@Pointcut("execution(* com..*Service.*(..))")        // com 包及子包的 Service
+
+// within: 匹配类型
+@Pointcut("within(com.service.*)")                   // service 包内
+@Pointcut("within(@org.springframework.stereotype.Service *)")
+
+// @annotation: 匹配注解
+@Pointcut("@annotation(com.annotation.Log)")         // 方法有 @Log 注解
+@Pointcut("@within(com.annotation.Log)")             // 类有 @Log 注解
+
+// args: 匹配参数
+@Pointcut("args(java.lang.String)")                  // 参数为 String
+
+// bean: 匹配 Bean 名称
+@Pointcut("bean(*Service)")                          // 以 Service 结尾</code></pre>
+
+<h2>六、代理方式</h2>
+
+<table>
+  <tr><th>代理</th><th>实现</th><th>特点</th></tr>
+  <tr><td>JDK 动态代理</td><td>java.lang.reflect.Proxy</td><td>目标类实现接口</td></tr>
+  <tr><td>CGLIB</td><td>继承目标类</td><td>生成子类，可代理无接口类</td></tr>
+</table>
+
+<pre><code class="language-java">// 强制使用 CGLIB
+@EnableAspectJAutoProxy(proxyTargetClass = true)</code></pre>
+
+<h2>七、事务管理示例</h2>
+
+<pre><code class="language-java">@Configuration
+@EnableTransactionManagement
+public class TransactionConfig {
+    
+    @Bean
+    public PlatformTransactionManager transactionManager(DataSource ds) {
+        return new DataSourceTransactionManager(ds);
+    }
+}
+
+@Service
+public class OrderService {
+    
+    @Transactional(
+        propagation = Propagation.REQUIRED,
+        isolation = Isolation.READ_COMMITTED,
+        timeout = 30,
+        rollbackFor = Exception.class
+    )
+    public void createOrder(Order order) {
+        // 事务自动管理
+    }
+    
+    @Transactional(readOnly = true)
+    public List<Order> listOrders() {
+        // 只读事务，优化性能
+    }
+}</code></pre>
+
+<h2>八、执行顺序</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[调用方法] --> B[@Around before]
+    B --> C[@Before]
+    C --> D[目标方法]
+    D --> E[@AfterReturning<br>或<br>@AfterThrowing]
+    E --> F[@After]
+    F --> G[@Around after]</code></pre>
+
+<h2>九、最佳实践</h2>
+<ul>
+  <li>优先使用 Around 通知获取完整控制</li>
+  <li>切点表达式尽量精确，避免影响过多方法</li>
+  <li>避免在通知中抛出异常，除非必要</li>
+  <li>注意自调用问题（this.method() 不会走代理）</li>
+  <li>复杂的横切关注点才用 AOP，简单场景直接编码</li>
+</ul>

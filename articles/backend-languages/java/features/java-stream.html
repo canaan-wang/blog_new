@@ -1,0 +1,66 @@
+<h1>Java Stream API</h1>
+
+<h2>一、Stream 简介</h2>
+<p>Stream 是 Java 8 引入的函数式编程特性，用于对集合进行声明式数据处理，支持链式操作和并行执行。</p>
+
+<h2>二、创建 Stream</h2>
+
+<pre><code class="language-java">// 从集合创建
+List<Integer> list = Arrays.asList(1, 2, 3);
+Stream<Integer> stream = list.stream();
+
+// 直接创建
+Stream<Integer> stream = Stream.of(1, 2, 3);
+
+// 无限流
+Stream<Integer> infinite = Stream.iterate(0, n -> n + 2).limit(10);</code></pre>
+
+<h2>三、中间操作</h2>
+
+<table>
+  <tr><th>操作</th><th>说明</th></tr>
+  <tr><td>filter(Predicate)</td><td>过滤元素</td></tr>
+  <tr><td>map(Function)</td><td>转换元素</td></tr>
+  <tr><td>flatMap(Function)</td><td>扁平化映射</td></tr>
+  <tr><td>distinct()</td><td>去重</td></tr>
+  <tr><td>sorted()</td><td>排序</td></tr>
+  <tr><td>limit(n)</td><td>截取前 n 个</td></tr>
+  <tr><td>skip(n)</td><td>跳过前 n 个</td></tr>
+</table>
+
+<h2>四、终结操作</h2>
+
+<table>
+  <tr><th>操作</th><th>说明</th></tr>
+  <tr><td>collect(Collector)</td><td>收集结果</td></tr>
+  <tr><td>forEach(Consumer)</td><td>遍历</td></tr>
+  <tr><td>reduce(BinaryOperator)</td><td>归约</td></tr>
+  <tr><td>count()</td><td>计数</td></tr>
+  <tr><td>anyMatch/allMatch</td><td>匹配检查</td></tr>
+  <tr><td>findFirst/findAny</td><td>查找元素</td></tr>
+</table>
+
+<h2>五、Collectors 工具</h2>
+
+<pre><code class="language-java">// 转 List
+List<String> list = stream.collect(Collectors.toList());
+
+// 转 Map
+Map<Long, String> map = users.stream()
+    .collect(Collectors.toMap(User::getId, User::getName));
+
+// 分组
+Map<String, List<User>> byCity = users.stream()
+    .collect(Collectors.groupingBy(User::getCity));
+
+// 统计
+IntSummaryStatistics stats = numbers.stream()
+    .collect(Collectors.summarizingInt(Integer::intValue));</code></pre>
+
+<h2>六、最佳实践</h2>
+<ul>
+  <li>Stream 只能消费一次</li>
+  <li>优先使用方法引用</li>
+  <li>避免在 Stream 中修改外部变量</li>
+  <li>谨慎使用并行流</li>
+</ul>

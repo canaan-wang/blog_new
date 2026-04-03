@@ -1,0 +1,165 @@
+<h1>Spring AOP 进阶</h1>
+
+<h2>一、AOP 实现方式</h2>
+
+<table>
+  <tr><th>方式</th><th>实现</th><th>特点</th></tr>
+  <tr><td>JDK 动态代理</td><td>java.lang.reflect.Proxy</td><td>目标类实现接口</td></tr>
+  <tr><td>CGLIB</td><td>继承目标类，生成子类</td><td>可代理无接口类</td></tr>
+</table>
+
+<pre><code class="language-java">// 强制使用 CGLIB
+@EnableAspectJAutoProxy(proxyTargetClass = true)</code></pre>
+
+<h2>二、切入点表达式进阶</h2>
+
+<pre><code class="language-java">// execution 语法
+execution(修饰符? 返回类型 声明类型? 方法名(参数) 异常?)
+
+// 示例
+@Pointcut("execution(public * *(..))")                    // 所有 public 方法
+@Pointcut("execution(* set*(..))")                        // 所有 set 方法
+@Pointcut("execution(* com.service.AccountService.*(..))") // AccountService 所有方法
+@Pointcut("execution(* com.service.*.*(..))")             // service 包所有方法
+@Pointcut("execution(* com..*Service.find*(..))")         // 任意子包 Service 的 find 方法
+@Pointcut("execution(* *(@com.annotation.Log *))")        // 参数有 @Log 注解的方法</code></pre>
+
+<h2>三、组合切入点</h2>
+
+<pre><code class="language-java">@Pointcut("@annotation(com.annotation.Log)")
+public void logAnnotation() {}
+
+@Pointcut("execution(* com.service..*.*(..))")
+public void serviceLayer() {}
+
+// && 交集
+@Pointcut("logAnnotation() && serviceLayer()")
+public void loggableService() {}
+
+// || 并集
+@Pointcut("execution(* com.controller..*.*(..)) || execution(* com.service..*.*(..))")
+public void controllerOrService() {}
+
+// ! 排除
+@Pointcut("serviceLayer() && !execution(* com.service.*Service.query*(..))")
+public void serviceExceptQuery() {}</code></pre>
+
+<h2>四、通知参数绑定</h2>
+
+<pre><code class="language-java">@Aspect
+@Component
+public class LogAspect {
+    
+    // 绑定 JoinPoint
+    @Before("serviceLayer()")
+    public void before(JoinPoint jp) {
+        String methodName = jp.getSignature().getName();
+        Object[] args = jp.getArgs();
+        Object target = jp.getTarget();
+    }
+    
+    // 绑定注解
+    @Before("@annotation(log)")
+    public void beforeWithAnnotation(JoinPoint jp, Log log) {
+        System.out.println(log.value());  // 获取注解属性
+    }
+    
+    // 绑定返回值
+    @AfterReturning(pointcut = "serviceLayer()", returning = "result")
+    public void afterReturn(JoinPoint jp, Object result) {
+        System.out.println("Return: " + result);
+    }
+    
+    // 绑定异常
+    @AfterThrowing(pointcut = "serviceLayer()", throwing = "ex")
+    public void afterThrow(JoinPoint jp, Exception ex) {
+        System.out.println("Exception: " + ex.getMessage());
+    }
+}</code></pre>
+
+<h2>五、环绕通知</h2>
+
+<pre><code class="language-java">@Around("serviceLayer()")
+public Object around(ProceedingJoinPoint pjp) throws Throwable {
+    long start = System.currentTimeMillis();
+    
+    try {
+        // 前置处理
+        Object[] args = pjp.getArgs();
+        // 可修改参数
+        
+        // 执行目标方法
+        Object result = pjp.proceed(args);
+        
+        // 后置处理
+        // 可修改返回值
+        return result;
+        
+    } catch (Exception e) {
+        // 异常处理
+        throw e;
+    } finally {
+        long elapsed = System.currentTimeMillis() - start;
+        System.out.println(pjp.getSignature() + " cost: " + elapsed + "ms");
+    }
+}</code></pre>
+
+<h2>六、引入（Introduction）</h2>
+
+<p>为目标类添加新接口实现：</p>
+
+<pre><code class="language-java">public interface Auditable {
+    void setCreatedBy(String user);
+    String getCreatedBy();
+}
+
+@Aspect
+@Component
+public class AuditableAspect {
+    
+    @DeclareParents(value = "com.service.*Service+", 
+                    defaultImpl = AuditableImpl.class)
+    public static Auditable auditable;
+}
+
+// Service 可以强转为 Auditable
+((Auditable) service).setCreatedBy("admin");</code></pre>
+
+<h2>七、AOP 代理选择</h2>
+
+<pre><code class="language-java">// 获取代理类型
+if (AopUtils.isJdkDynamicProxy(bean)) {
+    // JDK 代理
+} else if (AopUtils.isCglibProxy(bean)) {
+    // CGLIB 代理
+}
+
+// 获取目标对象
+Object target = AopProxyUtils.ultimateTargetClass(bean);</code></pre>
+
+<h2>八、AOP 执行顺序</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[调用] --> B[@Around before]
+    B --> C[@Before]
+    C --> D[目标方法]
+    D --> E[@AfterReturning<br>或<br>@AfterThrowing]
+    E --> F[@After]
+    F --> G[@Around after]</code></pre>
+
+<p>多个切面的顺序：</p>
+<pre><code class="language-java">@Order(1)   // 数字越小优先级越高
+@Aspect
+public class SecurityAspect {}
+
+@Order(2)
+@Aspect
+public class LogAspect {}</code></pre>
+
+<h2>九、AOP 性能优化</h2>
+<ul>
+  <li>切入点表达式尽量精确，减少匹配开销</li>
+  <li>避免在通知中执行耗时操作</li>
+  <li>不需要修改返回值时用 @Before/@After</li>
+  <li>切面对象使用单例</li>
+</ul>

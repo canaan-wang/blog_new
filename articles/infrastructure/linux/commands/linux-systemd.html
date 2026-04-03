@@ -1,0 +1,89 @@
+<h1>Systemd 服务管理</h1>
+
+<h2>一、Systemd 简介</h2>
+<p>Systemd 是 Linux 系统初始化和服务管理器，替代传统 init 系统，实现并行启动和依赖管理。</p>
+
+<h2>二、常用命令</h2>
+
+<pre><code class="language-bash"># 服务控制
+systemctl start nginx
+systemctl stop nginx
+systemctl restart nginx
+systemctl reload nginx      # 平滑重载
+systemctl status nginx
+
+# 开机自启
+systemctl enable nginx
+systemctl disable nginx
+
+# 查看服务
+systemctl list-units --type=service
+systemctl list-unit-files</code></pre>
+
+<h2>三、服务单元文件</h2>
+
+<pre><code class="language-ini"># /etc/systemd/system/myapp.service
+[Unit]
+Description=My Application
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=appuser
+WorkingDirectory=/opt/myapp
+ExecStart=/usr/bin/java -jar /opt/myapp/app.jar
+ExecStop=/bin/kill -SIGTERM $MAINPID
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+
+<h2>四、定时任务（替代 crontab）</h2>
+
+<pre><code class="language-ini"># /etc/systemd/system/backup.timer
+[Unit]
+Description=Run backup daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target</code></pre>
+
+<pre><code class="language-ini"># /etc/systemd/system/backup.service
+[Unit]
+Description=Backup Service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/scripts/backup.sh</code></pre>
+
+<pre><code class="language-bash">systemctl enable backup.timer
+systemctl start backup.timer
+systemctl list-timers</code></pre>
+
+<h2>五、日志查看（journalctl）</h2>
+
+<pre><code class="language-bash">journalctl -u nginx                # 查看服务日志
+journalctl -u nginx -f             # 实时跟踪
+journalctl -u nginx --since "1 hour ago"
+journalctl -u nginx --since today
+journalctl -p err                  # 查看错误级别日志
+journalctl --disk-usage            # 日志占用空间</code></pre>
+
+<h2>六、Target（运行级别）</h2>
+
+<table>
+  <tr><th>Target</th><th>说明</th></tr>
+  <tr><td>poweroff.target</td><td>关机</td></tr>
+  <tr><td>rescue.target</td><td>单用户模式</td></tr>
+  <tr><td>multi-user.target</td><td>多用户（无图形）</td></tr>
+  <tr><td>graphical.target</td><td>图形界面</td></tr>
+  <tr><td>reboot.target</td><td>重启</td></tr>
+</table>
+
+<pre><code class="language-bash">systemctl get-default
+systemctl set-default multi-user.target
+systemctl isolate rescue.target</code></pre>

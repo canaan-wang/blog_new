@@ -1,0 +1,25 @@
+<h1>Elasticsearch 基础</h1>
+
+<h2>一、核心概念</h2>
+<table>
+  <tr><th>概念</th><th>类比数据库</th></tr>
+  <tr><td>Index</td><td>Database</td></tr>
+  <tr><td>Document</td><td>Row</td></tr>
+  <tr><td>Field</td><td>Column</td></tr>
+  <tr><td>Mapping</td><td>Schema</td></tr>
+</table>
+
+<h2>二、基本操作</h2>
+<pre><code class="language-bash">PUT /products
+POST /products/_doc/1 {"name": "iPhone", "price": 999}
+GET /products/_doc/1</code></pre>
+
+<h2>三、常用查询</h2>
+<pre><code class="language-json">{
+  "query": {
+    "match": {"title": "苹果"}
+  }
+}</code></pre>
+
+<h2>四、倒排索引</h2>
+<p>通过词项到文档的映射实现快速搜索。</p>

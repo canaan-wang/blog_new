@@ -1,0 +1,140 @@
+<h1>Java ReentrantLock</h1>
+
+<h2>一、简介</h2>
+<p>ReentrantLock 是 <code>java.util.concurrent.locks</code> 包提供的显式锁，相比 synchronized 更灵活：</p>
+<ul>
+  <li>可中断、可超时、可轮询获取锁</li>
+  <li>支持公平/非公平模式</li>
+  <li>支持多条件变量（Condition）</li>
+</ul>
+
+<h2>二、基本用法</h2>
+<pre><code class="language-java">import java.util.concurrent.locks.ReentrantLock;
+
+public class Counter {
+    private final ReentrantLock lock = new ReentrantLock();
+    private int count = 0;
+    
+    public void increment() {
+        lock.lock();  // 获取锁
+        try {
+            count++;
+        } finally {
+            lock.unlock();  // 必须释放锁
+        }
+    }
+}</code></pre>
+
+<h2>三、锁获取方式</h2>
+
+<h3>可中断获取</h3>
+<pre><code class="language-java">public void interruptibleLock() throws InterruptedException {
+    lock.lockInterruptibly();  // 可被中断
+    try {
+        // 业务逻辑
+    } finally {
+        lock.unlock();
+    }
+}</code></pre>
+
+<h3>超时获取</h3>
+<pre><code class="language-java">public boolean tryLockWithTimeout() throws InterruptedException {
+    if (lock.tryLock(3, TimeUnit.SECONDS)) {
+        try {
+            // 获取锁成功
+            return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+    // 超时，获取锁失败
+    return false;
+}</code></pre>
+
+<h3>非阻塞尝试</h3>
+<pre><code class="language-java">if (lock.tryLock()) {
+    try {
+        // 处理业务
+    } finally {
+        lock.unlock();
+    }
+} else {
+    // 获取失败，做其他处理
+}</code></pre>
+
+<h2>四、公平锁与非公平锁</h2>
+
+<pre><code class="language-java">ReentrantLock fairLock = new ReentrantLock(true);   // 公平锁
+ReentrantLock unfairLock = new ReentrantLock(false); // 非公平锁（默认）</code></pre>
+
+<ul>
+  <li><strong>公平锁</strong>：按请求顺序获取锁，避免饥饿，吞吐量较低</li>
+  <li><strong>非公平锁</strong>：允许插队，性能更高，默认选择</li>
+</ul>
+
+<h2>五、Condition 条件变量</h2>
+
+<pre><code class="language-java">public class BoundedBuffer<T> {
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition notFull = lock.newCondition();
+    private final Condition notEmpty = lock.newCondition();
+    
+    private final Object[] items;
+    private int putptr, takeptr, count;
+    
+    public BoundedBuffer(int capacity) {
+        items = new Object[capacity];
+    }
+    
+    public void put(T x) throws InterruptedException {
+        lock.lock();
+        try {
+            while (count == items.length) {
+                notFull.await();  // 队列满，等待
+            }
+            items[putptr] = x;
+            putptr = (putptr + 1) % items.length;
+            count++;
+            notEmpty.signal();  // 通知消费者
+        } finally {
+            lock.unlock();
+        }
+    }
+    
+    public T take() throws InterruptedException {
+        lock.lock();
+        try {
+            while (count == 0) {
+                notEmpty.await();  // 队列空，等待
+            }
+            @SuppressWarnings("unchecked")
+            T x = (T) items[takeptr];
+            takeptr = (takeptr + 1) % items.length;
+            count--;
+            notFull.signal();  // 通知生产者
+            return x;
+        } finally {
+            lock.unlock();
+        }
+    }
+}</code></pre>
+
+<h2>六、synchronized vs ReentrantLock</h2>
+
+<table>
+  <tr><th>特性</th><th>synchronized</th><th>ReentrantLock</th></tr>
+  <tr><td>使用方式</td><td>隐式，自动释放</td><td>显式，需手动 unlock</td></tr>
+  <tr><td>可中断</td><td>否</td><td>是</td></tr>
+  <tr><td>超时获取</td><td>否</td><td>是</td></tr>
+  <tr><td>公平锁</td><td>否</td><td>可选</td></tr>
+  <tr><td>条件变量</td><td>一个</td><td>多个</td></tr>
+  <tr><td>性能</td><td>JDK6+ 优化后接近</td><td>略优（非公平）</td></tr>
+</table>
+
+<h2>七、最佳实践</h2>
+<ul>
+  <li>优先使用 synchronized，代码更简洁安全</li>
+  <li>需要高级特性（超时、中断、多条件）时用 ReentrantLock</li>
+  <li>unlock() 必须放在 finally 块</li>
+  <li>使用 tryLock() 避免死锁</li>
+</ul>

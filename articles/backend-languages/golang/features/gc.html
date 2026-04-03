@@ -1,0 +1,136 @@
+<h1>Go GC（垃圾回收）详解</h1>
+
+<p>Go 使用<strong>并发标记-清除（Concurrent Mark and Sweep）</strong>垃圾回收器，特点是低延迟、并发执行，最大程度减少 STW（Stop The World）时间。</p>
+
+<h2>GC 算法演进</h2>
+
+<table>
+  <tr><th>版本</th><th>算法</th><th>特点</th></tr>
+  <tr><td>Go 1.0-1.2</td><td>串行标记-清除</td><td>STW 时间长，可达数百毫秒</td></tr>
+  <tr><td>Go 1.3</td><td>并行清除</td><td>清除阶段并发，减少 STW</td></tr>
+  <tr><td>Go 1.5</td><td>并发标记</td><td>引入三色标记，标记与业务并发</td></tr>
+  <tr><td>Go 1.8</td><td>混合写屏障</td><td>几乎消除 STW，通常 &lt; 100μs</td></tr>
+</table>
+
+<h2>三色标记法</h2>
+
+<p>Go GC 使用三色标记法追踪存活对象：</p>
+
+<pre><code class="language-mermaid">graph TD
+    W[白色: 未访问/垃圾] --> G[灰色: 访问中/待处理]
+    G --> B[黑色: 已访问/存活]
+    
+    style W fill:#fff,stroke:#333
+    style G fill:#ff9,stroke:#333
+    style B fill:#9f9,stroke:#333</code></pre>
+
+<ul>
+  <li><strong>白色</strong>：潜在的垃圾对象</li>
+  <li><strong>灰色</strong>：已被访问，但引用的对象还未全部扫描</li>
+  <li><strong>黑色</strong>：已被访问，且引用的对象都已扫描（确定存活）</li>
+</ul>
+
+<h3>标记流程</h3>
+
+<ol>
+  <li>所有对象初始为白色</li>
+  <li>从根对象（全局变量、栈上变量）开始，标记为灰色</li>
+  <li>扫描灰色对象，将其引用的对象标记为灰色，自身标记为黑色</li>
+  <li>重复步骤 3 直到没有灰色对象</li>
+  <li>清除所有白色对象</li>
+</ol>
+
+<h2>写屏障（Write Barrier）</h2>
+
+<p>并发标记时，业务代码可能修改对象引用，导致漏标。Go 使用<strong>混合写屏障</strong>解决：</p>
+
+<pre><code class="language-go">// 伪代码：写屏障逻辑
+func writePointer(slot, ptr) {
+    //  shade(ptr)      // 新引用标记为灰色（插入写屏障）
+    //  shade(*slot)    // 旧引用标记为灰色（删除写屏障）
+    *slot = ptr
+}</code></pre>
+
+<ul>
+  <li><strong>插入屏障</strong>：新引用对象标记为灰色</li>
+  <li><strong>删除屏障</strong>：旧引用对象标记为灰色</li>
+  <li><strong>混合屏障</strong>：Go 1.8+ 使用，兼顾两者优点</li>
+</ul>
+
+<h2>GC 触发时机</h2>
+
+<ol>
+  <li><strong>内存分配触发</strong>：当堆内存达到上次 GC 后的 2 倍时触发（GOGC 控制）</li>
+  <li><strong>定时触发</strong>：2 分钟未触发则强制触发</li>
+  <li><strong>手动触发</strong>：调用 <code>runtime.GC()</code></li>
+</ol>
+
+<pre><code class="language-go">import "runtime"
+
+// 手动触发 GC（一般不需要）
+runtime.GC()
+
+// 查看 GC 统计
+var m runtime.MemStats
+runtime.ReadMemStats(&m)
+fmt.Printf("GC 次数: %d\n", m.NumGC)
+fmt.Printf("堆内存: %d MB\n", m.HeapAlloc/1024/1024)</code></pre>
+
+<h2>GC 调优</h2>
+
+<h3>GOGC 环境变量</h3>
+
+<p>控制 GC 触发阈值，默认值为 100（堆内存增长 100% 触发）：</p>
+
+<pre><code class="language-bash"># 减少 GC 频率（适合内存充足场景）
+export GOGC=200
+
+# 增加 GC 频率（适合低延迟场景）
+export GOGC=50
+
+# 禁用 GC（仅调试使用）
+export GOGC=off</code></pre>
+
+<h3>GOMEMLIMIT</h3>
+
+<p>Go 1.19+ 引入软内存限制，控制 Go 程序内存使用：</p>
+
+<pre><code class="language-bash">export GOMEMLIMIT=4GiB</code></pre>
+
+<h3>优化建议</h3>
+
+<table>
+  <tr><th>问题</th><th>解决方案</th></tr>
+  <tr><td>GC 频繁</td><td>减少临时对象分配，使用 sync.Pool</td></tr>
+  <tr><td>内存占用高</td><td>检查内存泄漏，及时释放大对象引用</td></tr>
+  <tr><td>GC 延迟高</td><td>降低 GOGC，减少堆大小</td></tr>
+</table>
+
+<h2>GC 监控</h2>
+
+<pre><code class="language-go">// 打印 GC 日志
+import "os"
+os.Setenv("GODEBUG", "gctrace=1")
+
+// 输出示例：
+// gc 1 @0.005s 0%: 0.015+0.23+0.012 ms clock, 0.12+0.18/0.33/0.045+0.098 ms cpu, 4->4->0 MB, 5 MB goal, 8 P</code></pre>
+
+<p>日志格式说明：</p>
+<ul>
+  <li><code>gc 1</code>：第 1 次 GC</li>
+  <li><code>@0.005s</code>：程序启动后 0.005 秒</li>
+  <li><code>0.015+0.23+0.012 ms</code>：STW 标记 + 并发标记 + STW 清除 的耗时</li>
+  <li><code>4->4->0 MB</code>：GC 前堆大小 -> GC 后堆大小 -> 存活大小</li>
+</ul>
+
+<h2>总结</h2>
+
+<table>
+  <tr><th>特性</th><th>说明</th></tr>
+  <tr><td>算法</td><td>并发三色标记-清除</td></tr>
+  <tr><td>STW</td><td>Go 1.8+ 通常 &lt; 100μs</td></tr>
+  <tr><td>触发条件</td><td>堆增长达到 GOGC% 或 2 分钟</td></tr>
+  <tr><td>调优手段</td><td>GOGC、GOMEMLIMIT、减少分配</td></tr>
+</table>
+
+<p>Go GC 设计目标是低延迟，适合对响应时间敏感的服务。通过减少堆内存分配、复用对象，可以进一步降低 GC 压力。</p>

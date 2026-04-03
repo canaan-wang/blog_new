@@ -1,0 +1,130 @@
+<h1>Java Fork/Join 框架</h1>
+
+<h2>一、简介</h2>
+<p>Fork/Join 是 Java 7 引入的并行计算框架，采用分治策略，自动处理任务分割和结果合并。</p>
+
+<h2>二、核心组件</h2>
+
+<pre><code class="language-mermaid">graph TD
+    FJ[ForkJoinPool] --> W[Worker Thread]
+    W --> T1[Task 1]
+    W --> T2[Task 2]
+    T1 -->|fork| T1_1[Subtask 1.1]
+    T1 -->|fork| T1_2[Subtask 1.2]
+    T1_1 -->|join| R[Result]</code></pre>
+
+<table>
+  <tr><th>组件</th><th>说明</th></tr>
+  <tr><td>ForkJoinPool</td><td>线程池，管理工作线程</td></tr>
+  <tr><td>ForkJoinTask</td><td>任务基类</td></tr>
+  <tr><td>RecursiveAction</td><td>无返回值任务</td></tr>
+  <tr><td>RecursiveTask</td><td>有返回值任务</td></tr>
+</table>
+
+<h2>三、基本用法</h2>
+
+<pre><code class="language-java">import java.util.concurrent.*;
+
+// 有返回值任务
+class SumTask extends RecursiveTask<Long> {
+    private static final int THRESHOLD = 10000;
+    private long[] array;
+    private int start, end;
+    
+    public SumTask(long[] array, int start, int end) {
+        this.array = array;
+        this.start = start;
+        this.end = end;
+    }
+    
+    @Override
+    protected Long compute() {
+        if (end - start <= THRESHOLD) {
+            // 直接计算
+            long sum = 0;
+            for (int i = start; i < end; i++) {
+                sum += array[i];
+            }
+            return sum;
+        }
+        
+        // 拆分任务
+        int mid = (start + end) / 2;
+        SumTask left = new SumTask(array, start, mid);
+        SumTask right = new SumTask(array, mid, end);
+        
+        left.fork();   // 异步执行左任务
+        long rightResult = right.compute();  // 同步执行右任务
+        long leftResult = left.join();   // 等待左任务结果
+        
+        return leftResult + rightResult;
+    }
+}
+
+// 使用
+ForkJoinPool pool = new ForkJoinPool();
+long[] array = new long[100000];
+// ... 初始化数组
+
+SumTask task = new SumTask(array, 0, array.length);
+long result = pool.invoke(task);
+System.out.println("Sum: " + result);</code></pre>
+
+<h2>四、无返回值任务</h2>
+
+<pre><code class="language-java">class PrintTask extends RecursiveAction {
+    private static final int THRESHOLD = 50;
+    private int start, end;
+    
+    @Override
+    protected void compute() {
+        if (end - start <= THRESHOLD) {
+            for (int i = start; i < end; i++) {
+                System.out.println(Thread.currentThread().getName() + ": " + i);
+            }
+        } else {
+            int mid = (start + end) / 2;
+            PrintTask left = new PrintTask(start, mid);
+            PrintTask right = new PrintTask(mid, end);
+            invokeAll(left, right);  // 同时执行两个任务
+        }
+    }
+}</code></pre>
+
+<h2>五、工作窃取</h2>
+
+<p>ForkJoinPool 使用双端队列，空闲线程从其他线程队列尾部窃取任务：</p>
+
+<pre><code class="language-mermaid">graph LR
+    T1[Thread 1<br>队列: T1 T2 T3] -->|本地执行| T1
+    T1 -->|窃取| T2[Thread 2<br>队列: T4 T5]
+    T2 -->|从尾部窃取| T4</code></pre>
+
+<h2>六、Stream 并行流</h2>
+
+<pre><code class="language-java">// 底层使用 ForkJoinPool
+long sum = LongStream.range(0, 1_000_000)
+    .parallel()
+    .sum();
+
+// 自定义线程池
+ForkJoinPool customPool = new ForkJoinPool(4);
+try {
+    long result = customPool.submit(() ->
+        LongStream.range(0, 1_000_000)
+            .parallel()
+            .sum()
+    ).get();
+} catch (Exception e) {
+    e.printStackTrace();
+} finally {
+    customPool.shutdown();
+}</code></pre>
+
+<h2>七、注意事项</h2>
+<ul>
+  <li>任务拆分粒度要合适（太细增加开销，太粗失去并行优势）</li>
+  <li>避免在任务中阻塞</li>
+  <li>避免共享可变状态</li>
+  <li>递归深度不宜过大（可能栈溢出）</li>
+</ul>

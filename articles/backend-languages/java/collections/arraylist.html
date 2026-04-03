@@ -1,0 +1,134 @@
+<h1>Java ArrayList</h1>
+
+<h2>一、ArrayList 核心特性</h2>
+
+<ul>
+  <li>基于<strong>动态数组</strong>实现，支持随机访问</li>
+  <li><strong>有序</strong>，可重复，允许 null</li>
+  <li><strong>非线程安全</strong>（可用 Collections.synchronizedList 或 CopyOnWriteArrayList）</li>
+  <li>默认初始容量 10，扩容时增长 1.5 倍</li>
+</ul>
+
+<h2>二、创建方式</h2>
+
+<pre><code class="language-java">// 默认容量 10
+List<String> list1 = new ArrayList<>();
+
+// 指定初始容量（大数据量推荐）
+List<String> list2 = new ArrayList<>(1000);
+
+// 从其他集合创建
+List<String> list3 = new ArrayList<>(Arrays.asList("a", "b"));
+
+// Java 9+ 不可变列表
+List<String> list4 = List.of("a", "b", "c"); // 不可修改</code></pre>
+
+<h2>三、常用操作</h2>
+
+<pre><code class="language-java">List<String> list = new ArrayList<>();
+
+// 增
+list.add("a");           // 末尾添加
+list.add(0, "b");        // 指定位置插入
+list.addAll(anotherList); // 批量添加
+
+// 删
+list.remove("a");        // 删除指定元素
+list.remove(0);          // 删除指定索引
+list.clear();            // 清空
+
+// 改
+list.set(0, "new");      // 修改指定位置
+
+// 查
+list.get(0);             // 获取指定索引
+list.indexOf("a");       // 查找元素位置
+list.contains("a");      // 是否包含
+list.size();             // 元素数量
+list.isEmpty();          // 是否为空</code></pre>
+
+<h2>四、遍历方式</h2>
+
+<pre><code class="language-java">// 方式1：for 循环（最快）
+for (int i = 0; i < list.size(); i++) {
+    String item = list.get(i);
+}
+
+// 方式2：增强 for
+for (String item : list) {
+    System.out.println(item);
+}
+
+// 方式3：Iterator（遍历时删除）
+Iterator<String> it = list.iterator();
+while (it.hasNext()) {
+    String item = it.next();
+    if (needRemove(item)) it.remove();
+}
+
+// 方式4：Stream API
+list.stream()
+    .filter(s -> s.startsWith("a"))
+    .forEach(System.out::println);</code></pre>
+
+<h2>五、扩容机制</h2>
+
+<pre><code class="language-java">// 源码简析
+default int DEFAULT_CAPACITY = 10;
+
+grow() {
+    int oldCapacity = elementData.length;
+    int newCapacity = oldCapacity + (oldCapacity >> 1); // 1.5 倍
+    elementData = Arrays.copyOf(elementData, newCapacity);
+}</code></pre>
+
+<p>扩容过程：</p>
+<ol>
+  <li>创建新数组（原容量的 1.5 倍）</li>
+  <li>使用 Arrays.copyOf 复制元素</li>
+  <li>丢弃旧数组（GC 回收）</li>
+</ol>
+
+<h2>六、性能特点</h2>
+
+<table>
+  <tr><th>操作</th><th>时间复杂度</th><th>说明</th></tr>
+  <tr><td>get(index)</td><td>O(1)</td><td>随机访问，直接数组索引</td></tr>
+  <tr><td>add</td><td>O(1) / O(n)</td><td>末尾添加 O(1)，扩容时 O(n)</td></tr>
+  <tr><td>add(index, e)</td><td>O(n)</td><td>需要移动元素</td></tr>
+  <tr><td>remove</td><td>O(n)</td><td>需要移动元素</td></tr>
+  <tr><td>contains</td><td>O(n)</td><td>遍历查找</td></tr>
+</table>
+
+<h2>七、与 LinkedList 对比</h2>
+
+<table>
+  <tr><th>特性</th><th>ArrayList</th><th>LinkedList</th></tr>
+  <tr><td>底层结构</td><td>数组</td><td>双向链表</td></tr>
+  <tr><td>随机访问</td><td>O(1) 快</td><td>O(n) 慢</td></tr>
+  <tr><td>插入/删除</td><td>O(n) 慢</td><td>O(1) 快（已知位置）</td></tr>
+  <tr><td>内存占用</td><td>少（只存数据）</td><td>多（额外指针）</td></tr>
+  <tr><td>适用场景</td><td>查询多、随机访问</td><td>频繁增删头尾</td></tr>
+</table>
+
+<h2>八、线程安全方案</h2>
+
+<pre><code class="language-java">// 方式1：Collections 同步包装（所有方法加锁，性能低）
+List<String> syncList = Collections.synchronizedList(new ArrayList<>());
+
+// 方式2：CopyOnWriteArrayList（读多写少，写时复制）
+List<String> cowList = new CopyOnWriteArrayList<>();
+
+// 方式3：手动同步
+synchronized(list) {
+    list.add("item");
+}</code></pre>
+
+<h2>九、最佳实践</h2>
+<ul>
+  <li>预估数据量，指定初始容量，避免频繁扩容</li>
+  <li>大量增删考虑 LinkedList 或批量操作</li>
+  <li>多线程环境使用 CopyOnWriteArrayList 或并发集合</li>
+  <li>返回集合时返回不可变视图或副本，防止外部修改</li>
+  <li>Java 8+ 优先使用 Stream API 处理集合</li>
+</ul>

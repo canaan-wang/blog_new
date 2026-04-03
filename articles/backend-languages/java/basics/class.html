@@ -1,0 +1,202 @@
+<h1>Java Class（类）</h1>
+
+<h2>一、基础认知</h2>
+
+<h3>1.1 类的定义与作用</h3>
+<p>类是Java面向对象编程（OOP）的基石，是对同一类事物的抽象描述，包含事物的<strong>属性（数据）</strong>和<strong>行为（方法）</strong>，作为创建对象的模板。</p>
+
+<p><strong>核心语法</strong>：</p>
+
+<pre><code class="language-java">// 访问修饰符 关键字 类名
+访问修饰符 class 类名 {
+    成员变量; // 属性
+    成员方法; // 行为
+}</code></pre>
+
+<p><strong>关键规则</strong>：</p>
+<ul>
+  <li>访问修饰符：控制访问权限（public、default、protected、private）</li>
+  <li>类名规范：大驼峰命名法（如Student），public类名必须与.java文件名一致</li>
+</ul>
+
+<h3>1.2 类与对象的关系</h3>
+<p>类是抽象概念，对象是类的具体实例；一个类可创建多个对象，对象属性值相互独立。</p>
+
+<p><strong>核心关联</strong>：通过<code>new 构造方法()</code>创建对象</p>
+
+<pre><code class="language-java">// 类（模板）
+public class Student {
+    String name; // 属性
+}
+// 对象（实例）
+Student stu = new Student();</code></pre>
+
+<h2>二、类的核心结构</h2>
+<p>完整类包含五大核心部分：成员变量、构造方法、成员方法、代码块、内部类，核心结构如下：</p>
+
+<pre><code class="language-java">public class ClassStructure {
+    // 1. 成员变量（属性）
+    private String name; // 实例变量
+    public static int count; // 静态变量
+    
+    // 2. 构造方法（初始化对象）
+    public ClassStructure() {} // 无参构造
+    public ClassStructure(String name) { this.name = name; } // 有参构造
+    
+    // 3. 成员方法（行为）
+    public void showInfo() {} // 实例方法
+    public static void showCount() {} // 静态方法
+    
+    // 4. 代码块（初始化）
+    static { System.out.println("静态代码块"); } // 静态代码块
+    { System.out.println("实例代码块"); } // 实例代码块
+    
+    // 5. 内部类
+    static class InnerClass {} // 静态内部类
+    class MemberInner {} // 成员内部类
+}</code></pre>
+
+<h3>2.1 成员变量</h3>
+<p>存储类的状态数据，分为实例变量和静态变量，遵循小驼峰命名法。</p>
+
+<table>
+  <tr><th>类型</th><th>标识</th><th>归属</th><th>访问方式</th><th>初始化</th></tr>
+  <tr><td>实例变量</td><td>无static</td><td>对象</td><td>对象名.变量名</td><td>默认初始化（int为0等）</td></tr>
+  <tr><td>静态变量</td><td>有static</td><td>类</td><td>类名.变量名（推荐）</td><td>默认初始化，仅1次</td></tr>
+</table>
+
+<h3>2.2 构造方法</h3>
+<p>用于对象初始化的特殊方法，核心特性：</p>
+<ul>
+  <li>方法名与类名完全一致，无返回值类型（不含void）</li>
+  <li>未显式定义时，编译器自动生成无参构造</li>
+  <li>显式定义后默认无参构造失效，需手动添加</li>
+  <li>支持重载（参数列表不同），可通过<code>this(参数)</code>调用本类其他构造</li>
+</ul>
+
+<h3>2.3 成员方法</h3>
+<p>描述类的行为，分为实例方法和静态方法，核心区别如下：</p>
+
+<table>
+  <tr><th>类型</th><th>标识</th><th>this指针</th><th>调用方式</th><th>访问范围</th></tr>
+  <tr><td>实例方法</td><td>无static</td><td>有</td><td>对象名.方法名()</td><td>实例变量+静态变量</td></tr>
+  <tr><td>静态方法</td><td>有static</td><td>无</td><td>类名.方法名()</td><td>仅静态变量</td></tr>
+</table>
+
+<p><strong>关键概念</strong>：</p>
+<ul>
+  <li>重载（Overload）：同类中方法名相同，参数列表不同（与返回值无关）</li>
+  <li>重写（Override）：子类重写父类实例方法，方法签名完全一致（遵循里氏替换原则）</li>
+</ul>
+
+<h3>2.4 代码块</h3>
+<p>用于初始化操作，核心是执行顺序，分为四类：</p>
+
+<table>
+  <tr><th>类型</th><th>定义格式</th><th>执行时机</th><th>执行次数</th></tr>
+  <tr><td>静态代码块</td><td>static { ... }</td><td>类加载时（最早）</td><td>仅1次</td></tr>
+  <tr><td>实例代码块</td><td>{ ... }</td><td>对象创建时（构造前）</td><td>每次创建对象</td></tr>
+  <tr><td>局部代码块</td><td>方法内{ ... }</td><td>执行到该代码块时</td><td>每次执行到</td></tr>
+</table>
+
+<p>执行顺序：静态代码块 > 实例代码块 > 构造方法 > 局部代码块</p>
+
+<h3>2.5 内部类</h3>
+<p>定义在类内部的类，核心作用是隐藏和逻辑内聚，常用两类：</p>
+
+<ul>
+  <li><strong>静态内部类</strong>：有static修饰，不依赖外部类对象，仅访问外部类静态成员（最常用）
+    <pre><code class="language-java">public class Outer {
+    static class Inner {}
+    // 调用：Outer.Inner inner = new Outer.Inner();
+}</code></pre>
+  </li>
+  <li><strong>匿名内部类</strong>：无类名，快速创建接口/抽象类实例
+    <pre><code class="language-java">interface Animal { void bark(); }
+// 使用：
+Animal dog = new Animal() {
+    @Override
+    public void bark() { System.out.println("汪汪叫"); }
+};</code></pre>
+  </li>
+</ul>
+
+<h2>三、类的高级特性</h2>
+
+<h3>3.1 访问修饰符</h3>
+<p>控制类及成员的访问范围，权限从大到小：public > protected > default > private</p>
+
+<table>
+  <tr><th>修饰符</th><th>本类</th><th>同包</th><th>子类</th><th>其他包</th></tr>
+  <tr><td>public</td><td>√</td><td>√</td><td>√</td><td>√</td></tr>
+  <tr><td>protected</td><td>√</td><td>√</td><td>√</td><td>×</td></tr>
+  <tr><td>default</td><td>√</td><td>√</td><td>×</td><td>×</td></tr>
+  <tr><td>private</td><td>√</td><td>×</td><td>×</td><td>×</td></tr>
+</table>
+
+<p>最佳实践：成员变量用private封装，提供public的getter/setter；工具类构造方法用private防止实例化</p>
+
+<h3>3.2 OOP三大特性</h3>
+
+<h4>3.2.1 封装（Encapsulation）</h4>
+<p>核心：隐藏内部细节，暴露安全接口。实现步骤：</p>
+<ol>
+  <li>private修饰成员变量，禁止直接访问</li>
+  <li>提供public的getter（获取）和setter（设置，可加校验）方法</li>
+</ol>
+
+<pre><code class="language-java">public class EncapsulationDemo {
+    private int age; // 私有变量
+    // setter加校验
+    public void setAge(int age) {
+        if (age > 0 && age < 150) {
+            this.age = age;
+        } else {
+            throw new IllegalArgumentException("年龄不合法");
+        }
+    }
+    // getter获取
+    public int getAge() { return age; }
+}</code></pre>
+
+<h4>3.2.2 继承（Inheritance）</h4>
+<p>核心：复用代码，通过<code>extends</code>实现（单继承，支持多层继承）。核心规则：</p>
+<ul>
+  <li>子类继承父类非private成员，静态成员可继承</li>
+  <li>子类构造默认先调用父类无参构造（<code>super()</code>，需在第一行）</li>
+  <li><code>super</code>关键字：调用父类构造、成员变量、方法</li>
+</ul>
+
+<h4>3.2.3 多态（Polymorphism）</h4>
+<p>核心：同一行为，不同实现。实现三条件：继承、方法重写、父类引用指向子类对象。</p>
+
+<pre><code class="language-java">// 父类
+public class Animal { public void bark() {} }
+// 子类
+public class Dog extends Animal {
+    @Override
+    public void bark() { System.out.println("汪汪叫"); }
+}
+// 多态使用
+Animal a = new Dog(); // 父类引用指向子类对象
+a.bark(); // 调用子类实现，输出"汪汪叫"</code></pre>
+
+<p>好处：降低耦合，提高扩展性（新增子类无需修改调用代码）。</p>
+
+<h3>3.3 关键修饰符</h3>
+
+<table>
+  <tr><th>修饰符</th><th>可修饰对象</th><th>核心作用</th></tr>
+  <tr><td>final</td><td>类、方法、变量</td><td>类不可继承；方法不可重写；变量为常量不可修改</td></tr>
+  <tr><td>abstract</td><td>类、方法</td><td>类不可实例化；方法无体，子类必须重写</td></tr>
+  <tr><td>static</td><td>变量、方法、代码块、内部类</td><td>属于类，不属于对象，仅加载一次</td></tr>
+</table>
+
+<h2>四、核心注意事项</h2>
+<ul>
+  <li>类名规范：public类名必须与.java文件名完全一致，否则编译报错</li>
+  <li>构造方法：显式定义时务必手动添加无参构造，避免子类调用失败</li>
+  <li>静态混用：静态方法不能调用非静态成员，非静态可调用静态成员</li>
+  <li>继承vs组合："is-a"用继承（Dog is a Animal），"has-a"用组合（Person has a Car），组合更灵活</li>
+  <li>内部类场景：静态内部类用于工具类；匿名内部类简化接口实例创建</li>
+</ul>

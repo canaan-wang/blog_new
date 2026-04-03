@@ -1,0 +1,131 @@
+<h1>Redis Sentinel 高可用</h1>
+
+<h2>一、Sentinel 是什么</h2>
+<p>Redis Sentinel 是监控、通知、自动故障转移的系统，为 Redis 主从架构提供高可用方案。</p>
+
+<h2>二、架构组成</h2>
+
+<pre><code class="language-mermaid">graph TD
+    subgraph "Sentinel 集群"
+        S1[Sentinel 1]
+        S2[Sentinel 2]
+        S3[Sentinel 3]
+    end
+    
+    M[Master]
+    R1[Replica 1]
+    R2[Replica 2]
+    
+    S1 -.->|监控| M
+    S2 -.->|监控| M
+    S3 -.->|监控| M
+    
+    M -->|复制| R1
+    M -->|复制| R2
+    
+    C[Client] -->|通过 Sentinel<br>发现主节点| S1</code></pre>
+
+<h2>三、Sentinel 功能</h2>
+
+<table>
+  <tr><th>功能</th><th>说明</th></tr>
+  <tr><td>监控</td><td>持续检查主从节点状态</td></tr>
+  <tr><td>通知</td><td>节点故障时发送通知</td></tr>
+  <tr><td>自动故障转移</td><td>主节点故障时自动切换</td></tr>
+  <tr><td>配置提供</td><td>向客户端提供当前主节点地址</td></tr>
+</table>
+
+<h2>四、配置部署</h2>
+
+<pre><code class="language-bash"># sentinel.conf
+port 26379
+sentinel monitor mymaster 127.0.0.1 6379 2
+sentinel down-after-milliseconds mymaster 5000
+sentinel parallel-syncs mymaster 1
+sentinel failover-timeout mymaster 10000
+
+# 启动
+redis-sentinel sentinel.conf
+# 或
+redis-server sentinel.conf --sentinel</code></pre>
+
+<h2>五、关键配置说明</h2>
+
+<table>
+  <tr><th>配置项</th><th>说明</th></tr>
+  <tr><td>monitor</td><td>监控的主节点，quorum=2 表示至少2个 Sentinel 同意才判定故障</td></tr>
+  <tr><td>down-after-milliseconds</td><td>多少毫秒无响应判定为主观下线</td></tr>
+  <tr><td>parallel-syncs</td><td>故障转移时同时同步的从节点数</td></tr>
+  <tr><td>failover-timeout</td><td>故障转移超时时间</td></tr>
+</table>
+
+<h2>六、故障转移流程</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[Sentinel 检测到 Master 无响应] --> B[主观下线 SDOWN]
+    B --> C{其他 Sentinel 确认?}
+    C -->|是| D[客观下线 ODOWN]
+    D --> E[选举 Leader Sentinel]
+    E --> F[选择最优 Slave]
+    F --> G[提升为 Master]
+    G --> H[通知其他 Slave 切换]
+    H --> I[通知客户端]</code></pre>
+
+<h2>七、Java 客户端连接</h2>
+
+<pre><code class="language-java">// Jedis Sentinel
+Set<String> sentinels = new HashSet<>();
+sentinels.add("127.0.0.1:26379");
+sentinels.add("127.0.0.1:26380");
+sentinels.add("127.0.0.1:26381");
+
+JedisSentinelPool pool = new JedisSentinelPool(
+    "mymaster",      // Sentinel 监控的名称
+    sentinels,
+    poolConfig,
+    5000             // 连接超时
+);
+
+try (Jedis jedis = pool.getResource()) {
+    jedis.set("key", "value");
+}</code></pre>
+
+<h2>八、Spring Data Redis 配置</h2>
+
+<pre><code class="language-java">@Bean
+public RedisConnectionFactory redisConnectionFactory() {
+    RedisSentinelConfiguration sentinelConfig = 
+        new RedisSentinelConfiguration()
+            .master("mymaster")
+            .sentinel("127.0.0.1", 26379)
+            .sentinel("127.0.0.1", 26380)
+            .sentinel("127.0.0.1", 26381);
+    
+    return new JedisConnectionFactory(sentinelConfig);
+}</code></pre>
+
+<h2>九、Sentinel 命令</h2>
+
+<pre><code class="language-bash"># 查看监控的主节点
+redis-cli -p 26379 SENTINEL masters
+
+# 查看从节点
+redis-cli -p 26379 SENTINEL slaves mymaster
+
+# 查看 Sentinel 信息
+redis-cli -p 26379 SENTINEL sentinels mymaster
+
+# 手动故障转移
+redis-cli -p 26379 SENTINEL failover mymaster
+
+# 检查状态
+redis-cli -p 26379 SENTINEL ckquorum mymaster</code></pre>
+
+<h2>十、注意事项</h2>
+<ul>
+  <li>至少部署 3 个 Sentinel 节点</li>
+  <li>Sentinel 节点应分布在不同物理机</li>
+  <li>网络分区时需 quorum 判断避免脑裂</li>
+  <li>故障转移期间会有短暂不可用</li>
+  <li>客户端需支持 Sentinel 协议</li>
+</ul>

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Calendar, Clock } from "lucide-react";
 import { getArticleBySlug, getAllArticleSlugs } from "@/lib/content";
+import ArticleContent from "@/components/article/ArticleContent";
 
 export async function generateStaticParams() {
   const slugs = await getAllArticleSlugs();
@@ -52,11 +53,8 @@ export default async function ArticlePage({
         </div>
       </header>
 
-      {/* Article Content - HTML Rendering */}
-      <div 
-        className="prose prose-lg max-w-none article-html-content"
-        dangerouslySetInnerHTML={{ __html: article.content }}
-      />
+      {/* Article Content with Mermaid Support */}
+      <ArticleContent html={article.content} />
     </article>
   );
 }

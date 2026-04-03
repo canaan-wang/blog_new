@@ -1,0 +1,85 @@
+<h1>JVM 调优工具</h1>
+
+<h2>一、命令行工具（JDK 自带）</h2>
+
+<h3>jps - 查看 Java 进程</h3>
+<pre><code class="language-bash">jps -lvm
+# 输出：PID 主类名 传入参数
+
+jps -l
+# 仅显示 PID 和主类名</code></pre>
+
+<h3>jstat - 统计信息</h3>
+<pre><code class="language-bash"># GC 统计（每秒输出，共10次）
+jstat -gcutil PID 1000 10
+
+# 输出字段说明
+# S0/S1: Survivor 区使用率
+# E: Eden 区使用率
+# O: Old 区使用率
+# M: Metaspace 使用率
+# YGC: Young GC 次数
+# YGCT: Young GC 时间
+# FGC: Full GC 次数
+# FGCT: Full GC 时间
+
+# 类加载统计
+jstat -class PID 1000</code></pre>
+
+<h3>jmap - 内存映射</h3>
+<pre><code class="language-bash"># 堆摘要
+jmap -heap PID
+
+# 堆直方图（对象统计）
+jmap -histo PID | head -20
+
+# 生成堆转储文件
+jmap -dump:format=b,file=heap.hprof PID
+
+# 只 dump live 对象
+jmap -dump:live,format=b,file=heap.hprof PID</code></pre>
+
+<h3>jstack - 线程栈</h3>
+<pre><code class="language-bash"># 打印线程栈
+jstack PID > thread_dump.txt
+
+# 检测死锁
+jstack -l PID | grep -A 50 "Found one Java-level deadlock"
+
+# 打印锁信息
+jstack -l PID</code></pre>
+
+<h2>二、Arthas（阿里开源）</h2>
+<pre><code class="language-bash"># 安装
+curl -O https://arthas.aliyun.com/arthas-boot.jar
+
+# 启动
+java -jar arthas-boot.jar
+
+# 常用命令
+dashboard       # 系统监控面板
+thread          # 线程信息
+thread -n 3     # 最忙的3个线程
+heapdump        # 生成堆转储
+watch Class method '{params,returnObj}'  # 方法监控
+trace Class method         # 方法耗时跟踪
+profiler start             # 火焰图采样</code></pre>
+
+<h2>三、线上问题排查</h2>
+
+<h3>CPU 100%</h3>
+<pre><code class="language-bash"># 1. 找到最耗 CPU 的线程
+top -Hp PID
+
+# 2. 线程 ID 转 16 进制
+printf "%x\n" TID
+
+# 3. 查看线程栈
+jstack PID | grep -A 30 "nid=0x16进制TID"</code></pre>
+
+<h3>内存泄漏</h3>
+<pre><code class="language-bash"># 生成堆转储
+jmap -dump:live,format=b,file=heap.hprof PID
+
+# 用 MAT 分析 Histogram 和 Dominator Tree</code></pre>
+</content>

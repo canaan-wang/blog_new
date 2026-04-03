@@ -1,0 +1,58 @@
+<h1>Kafka 基础</h1>
+
+<h2>一、Kafka 简介</h2>
+<p>Kafka 是高吞吐量分布式消息系统，用于构建实时数据管道和流式应用。</p>
+
+<h2>二、核心概念</h2>
+<table>
+  <tr><th>概念</th><th>说明</th></tr>
+  <tr><td>Topic</td><td>消息主题，逻辑分类</td></tr>
+  <tr><td>Partition</td><td>分区，实现水平扩展</td></tr>
+  <tr><td>Offset</td><td>消息在分区中的位置</td></tr>
+  <tr><td>Producer</td><td>消息生产者</td></tr>
+  <tr><td>Consumer Group</td><td>消费者组，组内消费者共同消费</td></tr>
+  <tr><td>Broker</td><td>Kafka 服务器节点</td></tr>
+  <tr><td>Replication</td><td>分区副本，保证高可用</td></tr>
+</table>
+
+<h2>三、基本命令</h2>
+<pre><code class="language-bash"># 创建 Topic
+kafka-topics.sh --create --topic my-topic \
+  --bootstrap-server localhost:9092 \
+  --partitions 3 --replication-factor 2
+
+# 发送消息
+kafka-console-producer.sh --topic my-topic \
+  --bootstrap-server localhost:9092
+
+# 消费消息
+kafka-console-consumer.sh --topic my-topic \
+  --from-beginning --bootstrap-server localhost:9092</code></pre>
+
+<h2>四、Java Producer</h2>
+<pre><code class="language-java">Properties props = new Properties();
+props.put("bootstrap.servers", "localhost:9092");
+props.put("key.serializer", StringSerializer.class.getName());
+props.put("value.serializer", StringSerializer.class.getName());
+
+Producer<String, String> producer = new KafkaProducer<>(props);
+producer.send(new ProducerRecord<>("my-topic", "key", "value"));
+producer.close();</code></pre>
+
+<h2>五、Java Consumer</h2>
+<pre><code class="language-java">Properties props = new Properties();
+props.put("bootstrap.servers", "localhost:9092");
+props.put("group.id", "my-group");
+props.put("key.deserializer", StringDeserializer.class.getName());
+props.put("value.deserializer", StringDeserializer.class.getName());
+
+Consumer<String, String> consumer = new KafkaConsumer<>(props);
+consumer.subscribe(Arrays.asList("my-topic"));
+
+while (true) {
+    ConsumerRecords<String, String> records = 
+        consumer.poll(Duration.ofMillis(100));
+    for (ConsumerRecord<String, String> record : records) {
+        System.out.println(record.value());
+    }
+}</code></pre>

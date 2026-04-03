@@ -1,0 +1,164 @@
+<h1>Spring Security</h1>
+
+<h2>一、核心概念</h2>
+
+<pre><code class="language-mermaid">graph LR
+    Request[请求] --> Filter[Filter Chain]
+    Filter --> Authentication[认证]
+    Authentication -->|成功| Authorization[鉴权]
+    Authentication -->|失败| Deny[拒绝访问]
+    Authorization -->|通过| Resource[访问资源]
+    Authorization -->|拒绝| Deny</code></pre>
+
+<table>
+  <tr><th>概念</th><th>说明</th></tr>
+  <tr><td>Authentication</td><td>认证（你是谁）</td></tr>
+  <tr><td>Authorization</td><td>授权（你能做什么）</td></tr>
+  <tr><td>Principal</td><td>主体（当前用户）</td></tr>
+  <tr><td>GrantedAuthority</td><td>权限</td></tr>
+</table>
+
+<h2>二、基本配置</h2>
+
+<pre><code class="language-java">@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/public/**").permitAll()
+                .requestMatchers("/admin/**").hasRole("ADMIN")
+                .requestMatchers("/user/**").hasAnyRole("USER", "ADMIN")
+                .anyRequest().authenticated()
+            )
+            .formLogin(form -> form
+                .loginPage("/login")
+                .permitAll()
+            )
+            .logout(logout -> logout
+                .logoutSuccessUrl("/")
+                .permitAll()
+            );
+        return http.build();
+    }
+    
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}</code></pre>
+
+<h2>三、JWT 认证</h2>
+
+<pre><code class="language-java">@Component
+public class JwtTokenProvider {
+    
+    @Value("${jwt.secret}")
+    private String secret;
+    
+    private final long validity = 3600000; // 1小时
+    
+    public String createToken(String username, List<String> roles) {
+        Claims claims = Jwts.claims().setSubject(username);
+        claims.put("roles", roles);
+        
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + validity);
+        
+        return Jwts.builder()
+            .setClaims(claims)
+            .setIssuedAt(now)
+            .setExpiration(expiry)
+            .signWith(SignatureAlgorithm.HS256, secret)
+            .compact();
+    }
+    
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser().setSigningKey(secret).parseClaimsJws(token);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}
+
+// JWT 过滤器
+@Component
+public class JwtFilter extends OncePerRequestFilter {
+    @Autowired
+    private JwtTokenProvider tokenProvider;
+    
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+            HttpServletResponse response, FilterChain chain) throws ServletException, IOException {
+        String token = resolveToken(request);
+        if (token != null && tokenProvider.validateToken(token)) {
+            Authentication auth = tokenProvider.getAuthentication(token);
+            SecurityContextHolder.getContext().setAuthentication(auth);
+        }
+        chain.doFilter(request, response);
+    }
+    
+    private String resolveToken(HttpServletRequest request) {
+        String bearer = request.getHeader("Authorization");
+        if (bearer != null && bearer.startsWith("Bearer ")) {
+            return bearer.substring(7);
+        }
+        return null;
+    }
+}</code></pre>
+
+<h2>四、方法级权限控制</h2>
+
+<pre><code class="language-java">@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class SecurityConfig { }
+
+@Service
+public class UserService {
+    
+    @PreAuthorize("hasRole('ADMIN')")
+    public void deleteUser(Long id) {
+        // 只有 ADMIN 能删除用户
+    }
+    
+    @PreAuthorize("#username == authentication.name")
+    public void updateProfile(String username, UserDTO dto) {
+        // 只能修改自己的资料
+    }
+    
+    @Secured({"ROLE_ADMIN", "ROLE_MANAGER"})
+    public void manageSystem() {
+        // ADMIN 或 MANAGER 角色可访问
+    }
+}</code></pre>
+
+<h2>五、自定义 UserDetailsService</h2>
+
+<pre><code class="language-java">@Service
+public class CustomUserDetailsService implements UserDetailsService {
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        
+        return new org.springframework.security.core.userdetails.User(
+            user.getUsername(),
+            user.getPassword(),
+            mapRolesToAuthorities(user.getRoles())
+        );
+    }
+    
+    private Collection<? extends GrantedAuthority> mapRolesToAuthorities(List<Role> roles) {
+        return roles.stream()
+            .map(role -> new SimpleGrantedAuthority(role.getName()))
+            .collect(Collectors.toList());
+    }
+}</code></pre>

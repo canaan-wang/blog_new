@@ -1,0 +1,136 @@
+<h1>Redis 发布订阅（Pub/Sub）</h1>
+
+<h2>一、简介</h2>
+<p>Redis Pub/Sub 是一种消息通信模式：发布者发送消息到频道，订阅者接收感兴趣频道的消息。实时性强，但消息不持久化。</p>
+
+<h2>二、基本命令</h2>
+
+<h3>订阅</h3>
+<pre><code class="language-bash">SUBSCRIBE channel1              # 订阅单个频道
+SUBSCRIBE news:sports news:tech # 订阅多个频道
+PSUBSCRIBE news.*               # 模式订阅，匹配 news. 开头的频道
+UNSUBSCRIBE channel1            # 取消订阅
+PUNSUBSCRIBE news.*             # 取消模式订阅</code></pre>
+
+<h3>发布</h3>
+<pre><code class="language-bash">PUBLISH channel1 "Hello World"  # 向频道发送消息</code></pre>
+
+<h3>查看频道</h3>
+<pre><code class="language-bash">PUBSUB CHANNELS                 # 列出所有活跃频道
+PUBSUB CHANNELS news.*          # 列出匹配模式的活跃频道
+PUBSUB NUMSUB channel1          # 查看频道订阅者数量
+PUBSUB NUMPAT                   # 查看模式订阅数量</code></pre>
+
+<h2>三、Java 实现</h2>
+
+<pre><code class="language-java">// Jedis 订阅者（需独立线程）
+public class Subscriber extends JedisPubSub {
+    @Override
+    public void onMessage(String channel, String message) {
+        System.out.println("收到消息 " + channel + ": " + message);
+    }
+    
+    @Override
+    public void onSubscribe(String channel, int subscribedChannels) {
+        System.out.println("订阅频道: " + channel);
+    }
+}
+
+// 启动订阅
+new Thread(() -> {
+    Jedis jedis = new Jedis("localhost");
+    jedis.subscribe(new Subscriber(), "news:sports");
+}).start();
+
+// 发布消息
+Jedis jedis = new Jedis("localhost");
+jedis.publish("news:sports", "Team A won the match!");</code></pre>
+
+<h2>四、Spring Data Redis 实现</h2>
+
+<pre><code class="language-java">@Configuration
+public class RedisConfig {
+    
+    @Bean
+    RedisMessageListenerContainer container(
+            RedisConnectionFactory factory,
+            MessageListenerAdapter listenerAdapter) {
+        RedisMessageListenerContainer container = 
+            new RedisMessageListenerContainer();
+        container.setConnectionFactory(factory);
+        container.addMessageListener(listenerAdapter, 
+            new PatternTopic("chat.*"));
+        return container;
+    }
+    
+    @Bean
+    MessageListenerAdapter listenerAdapter(RedisReceiver receiver) {
+        return new MessageListenerAdapter(receiver, "receive");
+    }
+}
+
+@Component
+public class RedisReceiver {
+    public void receive(String message) {
+        System.out.println("收到: " + message);
+    }
+}
+
+@Service
+public class MessagePublisher {
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+    
+    public void publish(String channel, String message) {
+        redisTemplate.convertAndSend(channel, message);
+    }
+}</code></pre>
+
+<h2>五、Pub/Sub 特点</h2>
+
+<pre><code class="language-mermaid">graph LR
+    P1[发布者] -->|消息| C[频道]
+    P2[发布者] -->|消息| C
+    C -->|广播| S1[订阅者1]
+    C -->|广播| S2[订阅者2]
+    C -->|广播| S3[订阅者3]</code></pre>
+
+<ul>
+  <li><strong>实时性</strong>：消息即时推送</li>
+  <li><strong>无持久化</strong>：订阅者离线期间消息丢失</li>
+  <li><strong>无确认</strong>：发布者不知道消息是否被接收</li>
+  <li><strong>广播</strong>：所有订阅者都收到相同消息</li>
+</ul>
+
+<h2>六、应用场景</h2>
+
+<h3>1. 实时消息推送</h3>
+<pre><code class="language-java">// 聊天室
+jedis.publish("chat:room:1001", 
+    "{\"user\":\"Alice\",\"msg\":\"Hello!\"}");</code></pre>
+
+<h3>2. 配置刷新通知</h3>
+<pre><code class="language-java">// 配置中心修改后通知应用刷新
+jedis.publish("config:refresh", "app.properties");</code></pre>
+
+<h3>3. 日志广播</h3>
+<pre><code class="language-java">jedis.publish("log:warn", "Disk space low on server-01");</code></pre>
+
+<h2>七、Pub/Sub vs List vs Stream</h2>
+
+<table>
+  <tr><th>特性</th><th>Pub/Sub</th><th>List</th><th>Stream</th></tr>
+  <tr><td>持久化</td><td>否</td><td>是</td><td>是</td></tr>
+  <tr><td>离线消息</td><td>不支持</td><td>支持</td><td>支持</td></tr>
+  <tr><td>消费确认</td><td>无</td><td>无</td><td>ACK 确认</td></tr>
+  <tr><td>消费者组</td><td>无</td><td>无</td><td>支持</td></tr>
+  <tr><td>适用场景</td><td>实时广播</td><td>简单队列</td><td>可靠消息队列</td></tr>
+</table>
+
+<h2>八、注意事项</h2>
+<ul>
+  <li>订阅连接是阻塞的，不能执行其他命令</li>
+  <li>频道名区分大小写</li>
+  <li>大数据量时考虑使用 Stream 替代</li>
+  <li>客户端断线需自动重连</li>
+</ul>

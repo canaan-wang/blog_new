@@ -1,0 +1,223 @@
+<h1>Shell 脚本编程</h1>
+
+<h2>一、基础语法</h2>
+
+<h3>脚本结构</h3>
+<pre><code class="language-bash">#!/bin/bash
+# 这是注释
+
+echo "Hello, World!"
+
+# 变量
+NAME="Alice"
+echo "Hello, $NAME"
+echo "Hello, ${NAME}!"</code></pre>
+
+<h3>特殊变量</h3>
+<table>
+  <tr><th>变量</th><th>含义</th></tr>
+  <tr><td>$0</td><td>脚本名</td></tr>
+  <tr><td>$1-$9</td><td>位置参数</td></tr>
+  <tr><td>$#</td><td>参数个数</td></tr>
+  <tr><td>$*</td><td>所有参数</td></tr>
+  <tr><td>$@</td><td>所有参数（数组形式）</td></tr>
+  <tr><td>$?</td><td>上条命令退出码</td></tr>
+  <tr><td>$$</td><td>当前进程ID</td></tr>
+</table>
+
+<h2>二、条件判断</h2>
+
+<pre><code class="language-bash"># 数字比较
+if [ $a -eq $b ]; then  # 等于
+if [ $a -ne $b ]; then  # 不等于
+if [ $a -gt $b ]; then  # 大于
+if [ $a -lt $b ]; then  # 小于
+
+# 字符串比较
+if [ "$str1" = "$str2" ]; then
+if [ -z "$str" ]; then   # 空字符串
+if [ -n "$str" ]; then   # 非空
+
+# 文件判断
+if [ -e file ]; then     # 存在
+if [ -f file ]; then     # 普通文件
+if [ -d dir ]; then      # 目录
+if [ -r file ]; then     # 可读
+if [ -w file ]; then     # 可写
+if [ -x file ]; then     # 可执行</code></pre>
+
+<h2>三、流程控制</h2>
+
+<h3>if 语句</h3>
+<pre><code class="language-bash">if [ condition ]; then
+    # 代码
+elif [ condition ]; then
+    # 代码
+else
+    # 代码
+fi</code></pre>
+
+<h3>case 语句</h3>
+<pre><code class="language-bash">case $var in
+    pattern1)
+        # 代码
+        ;;
+    pattern2|pattern3)
+        # 代码
+        ;;
+    *)
+        # 默认
+        ;;
+esac</code></pre>
+
+<h3>循环</h3>
+<pre><code class="language-bash"># for 循环
+for i in 1 2 3 4 5; do
+    echo $i
+done
+
+for ((i=0; i<10; i++)); do
+    echo $i
+done
+
+for file in *.txt; do
+    echo $file
+done
+
+# while 循环
+while [ condition ]; do
+    # 代码
+done
+
+# until 循环
+until [ condition ]; do
+    # 代码
+done
+
+# 读取文件
+while read line; do
+    echo $line
+done < file.txt</code></pre>
+
+<h2>四、函数</h2>
+
+<pre><code class="language-bash"># 定义函数
+function greet() {
+    local name=$1  # local 局部变量
+    echo "Hello, $name!"
+    return 0
+}
+
+# 调用
+greet "Alice"
+result=$?  # 获取返回值
+
+# 返回值通过 echo
+function add() {
+    echo $(($1 + $2))
+}
+sum=$(add 5 3)</code></pre>
+
+<h2>五、数组</h2>
+
+<pre><code class="language-bash"># 定义数组
+fruits=("apple" "banana" "cherry")
+
+# 访问元素
+echo ${fruits[0]}      # apple
+echo ${fruits[@]}      # 所有元素
+echo ${#fruits[@]}     # 数组长度
+
+# 遍历
+for fruit in "${fruits[@]}"; do
+    echo $fruit
+done
+
+# 添加元素
+fruits+=("date")
+
+# 关联数组（Bash 4+）
+declare -A user
+user[name]="Alice"
+user[age]=25
+echo ${user[name]}</code></pre>
+
+<h2>六、实用脚本示例</h2>
+
+<h3>日志清理</h3>
+<pre><code class="language-bash">#!/bin/bash
+LOG_DIR="/var/log/app"
+DAYS=7
+
+find $LOG_DIR -name "*.log" -mtime +$DAYS -delete
+echo "Cleaned logs older than $DAYS days"</code></pre>
+
+<h3>批量重命名</h3>
+<pre><code class="language-bash">#!/bin/bash
+for file in *.txt; do
+    [ -e "$file" ] || continue
+    newname="backup_$file"
+    mv "$file" "$newname"
+    echo "Renamed: $file -> $newname"
+done</code></pre>
+
+<h3>服务监控</h3>
+<pre><code class="language-bash">#!/bin/bash
+SERVICE="nginx"
+
+if ! pgrep -x "$SERVICE" > /dev/null; then
+    echo "$SERVICE is not running, starting..."
+    systemctl start $SERVICE
+    echo "$SERVICE started at $(date)" >> /var/log/service_monitor.log
+fi</code></pre>
+
+<h3>数据库备份</h3>
+<pre><code class="language-bash">#!/bin/bash
+DB_NAME="mydb"
+BACKUP_DIR="/backup"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+mysqldump -u root -p'password' $DB_NAME > $BACKUP_DIR/${DB_NAME}_${DATE}.sql
+
+# 保留最近 7 天
+cd $BACKUP_DIR
+ls -t ${DB_NAME}_*.sql | tail -n +8 | xargs -r rm
+echo "Backup completed: ${DB_NAME}_${DATE}.sql"</code></pre>
+
+<h2>七、调试技巧</h2>
+
+<pre><code class="language-bash">#!/bin/bash -x  # 全程调试
+
+set -x          # 开启调试
+# 代码
+set +x          # 关闭调试
+
+set -e          # 遇到错误立即退出
+set -u          # 使用未定义变量报错
+trap 'echo "Error at line $LINENO"' ERR</code></pre>
+
+<h2>八、常用技巧</h2>
+
+<pre><code class="language-bash"># 命令替换
+date_str=$(date +%Y-%m-%d)
+
+# 重定向
+cmd > file    # 输出到文件
+cmd >> file   # 追加到文件
+cmd 2>&1      # 错误输出到标准输出
+cmd &> file   # 全部输出到文件
+
+# Here Document
+cat << EOF
+Line 1
+Line 2
+EOF
+
+# 管道与 xargs
+find . -name "*.log" | xargs grep "ERROR"
+
+# 并行执行
+for i in {1..10}; do
+    (sleep 1; echo $i) &
+done
+wait</code></pre>

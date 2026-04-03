@@ -1,0 +1,147 @@
+<h1>JVM 概述</h1>
+
+<h2>一、什么是 JVM</h2>
+
+<p>JVM（Java Virtual Machine，Java虚拟机）是运行 Java 字节码的虚拟计算机，是 Java 跨平台特性的核心支撑。不同操作系统有各自的 JVM 实现，但执行的是相同的字节码。</p>
+
+<pre><code class="language-mermaid">graph LR
+    A[Java 源代码 .java] -->|javac 编译| B[字节码 .class]
+    B --> C[JVM]
+    C -->|解释执行/JIT| D[Windows 机器码]
+    C -->|解释执行/JIT| E[Linux 机器码]
+    C -->|解释执行/JIT| F[Mac 机器码]</code></pre>
+
+<h2>二、JVM 内存结构</h2>
+
+<pre><code class="language-mermaid">graph TB
+    subgraph JVMRuntime[JVM 运行时数据区]
+        subgraph ThreadPrivate[线程私有]
+            PC[程序计数器]
+            VMStack[虚拟机栈]
+            NativeStack[本地方法栈]
+        end
+        
+        subgraph ThreadShared[线程共享]
+            Heap[堆 Heap]
+            MetaSpace[元空间 Metaspace]
+        end
+        
+        subgraph HeapDetail[堆细分]
+            Young[年轻代]
+            Old[老年代]
+        end
+        
+        subgraph YoungDetail[年轻代]
+            Eden[Eden 区]
+            S0[Survivor0]
+            S1[Survivor1]
+        end
+    end
+    
+    Heap --> YoungDetail
+    Heap --> Old
+    
+    style Heap fill:#f9f
+    style MetaSpace fill:#bbf</code></pre>
+
+<h3>各区域说明</h3>
+
+<table>
+  <tr><th>区域</th><th>作用</th><th>线程安全</th><th>OutOfMemoryError</th></tr>
+  <tr><td>程序计数器</td><td>记录当前线程执行的字节码行号</td><td>私有</td><td>无</td></tr>
+  <tr><td>虚拟机栈</td><td>存储栈帧（局部变量、操作数栈）</td><td>私有</td><td>StackOverflowError / OOM</td></tr>
+  <tr><td>本地方法栈</td><td>Native 方法执行</td><td>私有</td><td>StackOverflowError / OOM</td></tr>
+  <tr><td>堆 Heap</td><td>存储对象实例和数组</td><td>共享</td><td>Java heap space</td></tr>
+  <tr><td>元空间 Metaspace</td><td>存储类元数据（JDK 8+）</td><td>共享</td><td>Metaspace</td></tr>
+  <tr><td>直接内存</td><td>NIO 使用的堆外内存</td><td>-</td><td>Direct buffer memory</td></tr>
+</table>
+
+<h2>三、类加载机制</h2>
+
+<h3>类加载过程</h3>
+
+<pre><code class="language-mermaid">graph LR
+    A[加载 Loading] --> B[验证 Verification]
+    B --> C[准备 Preparation]
+    C --> D[解析 Resolution]
+    D --> E[初始化 Initialization]
+    E --> F[使用 Using]
+    F --> G[卸载 Unloading]</code></pre>
+
+<ol>
+  <li><strong>加载</strong>：读取 .class 文件，生成 Class 对象</li>
+  <li><strong>验证</strong>：检查字节码安全性</li>
+  <li><strong>准备</strong>：为静态变量分配内存，设置默认值</li>
+  <li><strong>解析</strong>：符号引用转为直接引用</li>
+  <li><strong>初始化</strong>：执行静态代码块，初始化静态变量</li>
+</ol>
+
+<h3>双亲委派模型</h3>
+
+<pre><code class="language-mermaid">graph TD
+    A[自定义类加载器] --> B[AppClassLoader]
+    B --> C[ExtClassLoader]
+    C --> D[BootstrapClassLoader]
+    
+    D --> E[加载核心类库<br/>rt.jar]</code></pre>
+
+<ul>
+  <li><strong>Bootstrap</strong>：加载 <code>JAVA_HOME/jre/lib</code> 核心类</li>
+  <li><strong>Extension</strong>：加载 <code>ext</code> 目录扩展类</li>
+  <li><strong>Application</strong>：加载 classpath 下的类</li>
+</ul>
+
+<p>双亲委派：先委托父加载器加载，父加载器无法加载才自己加载。保证核心类库安全。</p>
+
+<h2>四、执行引擎</h2>
+
+<h3>解释执行与 JIT 编译</h3>
+
+<ul>
+  <li><strong>解释器</strong>：逐行解释字节码，启动快执行慢</li>
+  <li><strong>JIT（Just In Time）</strong>：热点代码编译为机器码，执行快
+    <ul>
+      <li>热点检测：方法调用计数器 + 回边计数器</li>
+      <li>C1 编译器：客户端模式，快速编译</li>
+      <li>C2 编译器：服务端模式，深度优化</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>五、JVM 调优基础</h2>
+
+<h3>常用参数</h3>
+
+<pre><code class="language-bash"># 堆内存设置
+-Xms512m          # 初始堆大小
+-Xmx2g            # 最大堆大小
+-Xmn256m          # 年轻代大小
+
+# 元空间
+-XX:MetaspaceSize=128m
+-XX:MaxMetaspaceSize=256m
+
+# GC 设置
+-XX:+UseG1GC      # 使用 G1 垃圾回收器
+-XX:MaxGCPauseMillis=200  # 最大 GC 停顿时间
+
+# 打印 GC 日志
+-XX:+PrintGCDetails
+-Xloggc:gc.log</code></pre>
+
+<h2>六、常用诊断工具</h2>
+
+<table>
+  <tr><th>工具</th><th>作用</th></tr>
+  <tr><td>jps</td><td>查看 Java 进程</td></tr>
+  <tr><td>jstat</td><td>监控 GC、类加载、编译等统计</td></tr>
+  <tr><td>jmap</td><td>生成堆转储快照（heap dump）</td></tr>
+  <tr><td>jstack</td><td>生成线程快照，分析死锁</td></tr>
+  <tr><td>jconsole</td><td>可视化监控工具</td></tr>
+  <tr><td>jvisualvm</td><td>强大的可视化分析工具</td></tr>
+  <tr><td>arthas</td><td>阿里巴巴开源诊断神器</td></tr>
+</table>
+
+<h2>七、总结</h2>
+
+<p>JVM 是 Java 运行的基础，理解其内存结构、类加载机制和执行原理，对于排查内存溢出、性能调优、理解语言特性都有重要作用。</p>

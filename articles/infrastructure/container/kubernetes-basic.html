@@ -1,0 +1,107 @@
+<h1>Kubernetes 基础</h1>
+
+<h2>一、K8s 简介</h2>
+<p>Kubernetes 是容器编排平台，提供部署、扩展、管理容器化应用的能力。</p>
+
+<h2>二、核心概念</h2>
+
+<pre><code class="language-mermaid">graph TD
+    Master[Master 节点] --> API[API Server]
+    Master --> Scheduler[调度器]
+    Master --> CM[控制器管理器]
+    Master --> etcd[etcd 存储]
+    
+    Node1[Worker 节点] --> Kubelet1[kubelet]
+    Node1 --> Proxy1[kube-proxy]
+    Node1 --> Pod1[Pod]
+    
+    Node2[Worker 节点] --> Kubelet2[kubelet]
+    Node2 --> Proxy2[kube-proxy]
+    Node2 --> Pod2[Pod]</code></pre>
+
+<h2>三、基本命令</h2>
+
+<pre><code class="language-bash"># 查看资源
+kubectl get nodes
+kubectl get pods
+kubectl get services
+kubectl get deployments
+
+# 查看详情
+kubectl describe pod mypod
+kubectl logs mypod
+kubectl logs -f mypod  # 实时日志
+
+# 执行命令
+kubectl exec -it mypod -- /bin/bash
+
+# 应用配置
+kubectl apply -f deployment.yaml
+kubectl delete -f deployment.yaml</code></pre>
+
+<h2>四、Pod 定义</h2>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+  labels:
+    app: web
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.20
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"</code></pre>
+
+<h2>五、Deployment</h2>
+
+<pre><code class="language-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: myapp:1.0
+        ports:
+        - containerPort: 8080</code></pre>
+
+<h2>六、Service</h2>
+
+<pre><code class="language-yaml">apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+spec:
+  selector:
+    app: web
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: LoadBalancer  # ClusterIP/NodePort/LoadBalancer</code></pre>
+
+<h2>七、扩缩容</h2>
+
+<pre><code class="language-bash"># 手动扩缩容
+kubectl scale deployment web-deployment --replicas=5
+
+# 自动扩缩容
+kubectl autoscale deployment web-deployment \
+  --min=2 --max=10 --cpu-percent=80</code></pre>

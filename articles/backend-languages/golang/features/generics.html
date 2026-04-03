@@ -1,0 +1,265 @@
+<h1>Go 泛型详解</h1>
+
+<p>Go 1.18 引入泛型（Generics），允许编写类型参数化的代码，解决重复代码问题，同时保持类型安全。</p>
+
+<h2>为什么需要泛型</h2>
+
+<p>泛型之前，实现通用函数需要：</p>
+
+<pre><code class="language-go">// 为每种类型写重复代码
+func MinInt(a, b int) int {
+    if a < b { return a }
+    return b
+}
+
+func MinFloat(a, b float64) float64 {
+    if a < b { return a }
+    return b
+}
+
+// 或使用 interface{} 失去类型安全
+func MinAny(a, b interface{}) interface{} {
+    // 类型断言，运行时错误风险
+}</code></pre>
+
+<h2>泛型基础语法</h2>
+
+<h3>类型参数</h3>
+
+<pre><code class="language-go">// [T any] 定义类型参数 T，约束为 any（任意类型）
+func Print[T any](v T) {
+    fmt.Println(v)
+}
+
+// 使用
+Print[int](42)        // 显式指定类型
+Print("hello")        // 类型推导
+Print(3.14)</code></pre>
+
+<h3>泛型函数</h3>
+
+<pre><code class="language-go">// 比较函数，T 必须支持 < 操作
+func Min[T comparable](a, b T) T {
+    if a < b { return a }
+    return b
+}
+
+// 使用
+m1 := Min(3, 5)           // int
+m2 := Min(3.14, 2.71)     // float64</code></pre>
+
+<h3>泛型类型</h3>
+
+<pre><code class="language-go">// 泛型切片
+type Stack[T any] struct {
+    items []T
+}
+
+func (s *Stack[T]) Push(v T) {
+    s.items = append(s.items, v)
+}
+
+func (s *Stack[T]) Pop() T {
+    var zero T
+    if len(s.items) == 0 {
+        return zero
+    }
+    v := s.items[len(s.items)-1]
+    s.items = s.items[:len(s.items)-1]
+    return v
+}
+
+// 使用
+var intStack Stack[int]
+intStack.Push(1)
+intStack.Push(2)
+fmt.Println(intStack.Pop()) // 2</code></pre>
+
+<h2>类型约束</h2>
+
+<h3>内置约束</h3>
+
+<table>
+  <tr><th>约束</th><th>说明</th></tr>
+  <tr><td><code>any</code></td><td>任意类型（等价于 interface{}）</td></tr>
+  <tr><td><code>comparable</code></td><td>支持 ==、!= 的类型</td></tr>
+  <tr><td><code>constraints.Ordered</code></td><td>支持 &lt;、&lt;=、&gt;、&gt;= 的类型（数值、字符串）</td></tr>
+</table>
+
+<pre><code class="language-go">import "golang.org/x/exp/constraints"
+
+// Ordered 约束：支持比较操作
+func Max[T constraints.Ordered](a, b T) T {
+    if a > b { return a }
+    return b
+}
+
+// comparable 约束：支持相等比较
+func IndexOf[T comparable](s []T, v T) int {
+    for i, x := range s {
+        if x == v { return i }
+    }
+    return -1
+}</code></pre>
+
+<h3>自定义约束</h3>
+
+<pre><code class="language-go">// 类型集约束（Go 1.18+）
+type Number interface {
+    ~int | ~int8 | ~int16 | ~int32 | ~int64 |
+    ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr |
+    ~float32 | ~float64
+}
+
+// ~ 表示底层类型匹配（如 type MyInt int 也匹配）
+type Signed interface {
+    ~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+
+func Sum[T Number](s []T) T {
+    var sum T
+    for _, v := range s {
+        sum += v
+    }
+    return sum
+}</code></pre>
+
+<h3>方法约束</h3>
+
+<pre><code class="language-go">// 要求类型实现 String() 方法
+type Stringer interface {
+    String() string
+}
+
+func Join[T Stringer](s []T, sep string) string {
+    var parts []string
+    for _, v := range s {
+        parts = append(parts, v.String())
+    }
+    return strings.Join(parts, sep)
+}</code></pre>
+
+<h2>高级特性</h2>
+
+<h3>多重类型参数</h3>
+
+<pre><code class="language-go">// K 是可比较的键类型，V 是任意值类型
+func MapKeys[K comparable, V any](m map[K]V) []K {
+    keys := make([]K, 0, len(m))
+    for k := range m {
+        keys = append(keys, k)
+    }
+    return keys
+}</code></pre>
+
+<h3>类型推导</h3>
+
+<pre><code class="language-go">// 编译器根据参数推导类型
+func Map[T, R any](s []T, fn func(T) R) []R {
+    result := make([]R, len(s))
+    for i, v := range s {
+        result[i] = fn(v)
+    }
+    return result
+}
+
+// 使用
+ints := []int{1, 2, 3}
+strs := Map(ints, func(i int) string {
+    return strconv.Itoa(i)
+}) // []string{"1", "2", "3"}</code></pre>
+
+<h3>类型近似（~）</h3>
+
+<pre><code class="language-go">type MyInt int // 自定义类型
+
+type Intish interface {
+    ~int // 匹配 int 及其底层类型
+}
+
+func Double[T Intish](v T) T {
+    return v * 2
+}
+
+var x MyInt = 5
+Double(x) // OK，MyInt 底层是 int</code></pre>
+
+<h2>实际应用示例</h2>
+
+<h3>通用 Filter 函数</h3>
+
+<pre><code class="language-go">func Filter[T any](s []T, fn func(T) bool) []T {
+    result := make([]T, 0, len(s))
+    for _, v := range s {
+        if fn(v) {
+            result = append(result, v)
+        }
+    }
+    return result
+}
+
+// 使用
+nums := []int{1, 2, 3, 4, 5}
+evens := Filter(nums, func(n int) bool {
+    return n%2 == 0
+}) // [2 4]</code></pre>
+
+<h3>通用 Set 类型</h3>
+
+<pre><code class="language-go">type Set[T comparable] map[T]struct{}
+
+func NewSet[T comparable]() Set[T] {
+    return make(Set[T])
+}
+
+func (s Set[T]) Add(v T) {
+    s[v] = struct{}{}
+}
+
+func (s Set[T]) Contains(v T) bool {
+    _, ok := s[v]
+    return ok
+}
+
+// 使用
+set := NewSet[string]()
+set.Add("a")
+fmt.Println(set.Contains("a")) // true</code></pre>
+
+<h2>性能考虑</h2>
+
+<ul>
+  <li><strong>编译时实例化</strong>：泛型代码在编译时生成具体类型的版本，无运行时开销</li>
+  <li><strong>代码膨胀</strong>：过多类型参数可能导致二进制增大</li>
+  <li><strong>接口调用</strong>：复杂约束可能引入接口调用开销</li>
+</ul>
+
+<h2>限制</h2>
+
+<table>
+  <tr><th>限制</th><th>说明</th></tr>
+  <tr><td>不能用于方法</td><td>type T 上的方法不能用类型参数</td></tr>
+  <tr><td>不能用于匿名函数</td><td>func 字面量不能有类型参数</td></tr>
+  <tr><td>类型断言受限</td><td>不能断言为类型参数</td></tr>
+</table>
+
+<h2>最佳实践</h2>
+
+<table>
+  <tr><th>建议</th><th>说明</th></tr>
+  <tr><td>适度使用</td><td>简单场景直接用 interface{} 或代码生成</td></tr>
+  <tr><td>约束最小化</td><td>只要求必要的约束（如用 any 而非 comparable）</td></tr>
+  <tr><td>类型安全优先</td><td>用泛型替代 interface{} + 类型断言</td></tr>
+  <tr><td>可读性</td><td>复杂约束考虑类型别名简化</td></tr>
+</table>
+
+<h2>总结</h2>
+
+<p>Go 泛型在保持语言简洁的同时，解决了代码复用问题：</p>
+<ul>
+  <li>类型参数化编写通用代码</li>
+  <li>约束保证类型安全</li>
+  <li>编译时实例化，无运行时开销</li>
+</ul>
+
+<p>适合场景：数据结构（容器、集合）、通用算法（排序、搜索）、工具函数（Filter、Map、Reduce）。</p>

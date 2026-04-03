@@ -1,0 +1,133 @@
+<h1>Java 异常处理</h1>
+
+<h2>一、异常体系</h2>
+
+<pre><code class="language-mermaid">graph TD
+    Throwable --> Error
+    Throwable --> Exception
+    Exception --> RuntimeException
+    Exception --> IOException
+    Exception --> SQLException</code></pre>
+
+<table>
+  <tr><th>类型</th><th>说明</th><th>处理</th></tr>
+  <tr><td>Error</td><td>严重系统错误</td><td>不捕获</td></tr>
+  <tr><td>RuntimeException</td><td>运行时异常</td><td>可防可避免</td></tr>
+  <tr><td>Checked Exception</td><td>受检异常</td><td>必须处理</td></tr>
+</table>
+
+<h2>二、try-catch-finally</h2>
+
+<pre><code class="language-java">try {
+    // 可能抛出异常的代码
+    riskyOperation();
+} catch (SpecificException e) {
+    // 处理特定异常
+    log.error("Specific error", e);
+} catch (Exception e) {
+    // 处理其他异常
+    log.error("Unexpected error", e);
+} finally {
+    // 总是执行（通常释放资源）
+    cleanup();
+}</code></pre>
+
+<h2>三、try-with-resources</h2>
+
+<pre><code class="language-java">// Java 7+ 自动关闭资源
+try (Connection conn = dataSource.getConnection();
+     PreparedStatement ps = conn.prepareStatement(sql)) {
+    ps.executeQuery();
+} catch (SQLException e) {
+    // 自动调用 close()
+}
+
+// 支持多个资源
+try (InputStream in = new FileInputStream("in.txt");
+     OutputStream out = new FileOutputStream("out.txt")) {
+    // 使用资源
+}</code></pre>
+
+<h2>四、异常最佳实践</h2>
+
+<h3>1. 优先使用标准异常</h3>
+<pre><code class="language-java">// 参数非法
+throw new IllegalArgumentException("Invalid param: " + param);
+
+// 状态非法
+throw new IllegalStateException("Connection closed");
+
+// 空指针
+throw new NullPointerException("user is null");
+
+// 不支持的操作
+throw new UnsupportedOperationException();</code></pre>
+
+<h3>2. 自定义异常</h3>
+<pre><code class="language-java">public class BusinessException extends RuntimeException {
+    private final String errorCode;
+    
+    public BusinessException(String errorCode, String message) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+    
+    public String getErrorCode() {
+        return errorCode;
+    }
+}</code></pre>
+
+<h3>3. 异常转换</h3>
+<pre><code class="language-java">public User getUser(Long id) {
+    try {
+        return userDao.findById(id);
+    } catch (SQLException e) {
+        // 底层异常转换为业务异常
+        throw new BusinessException("DB_ERROR", "查询用户失败", e);
+    }
+}</code></pre>
+
+<h2>五、常见错误</h2>
+
+<pre><code class="language-java">// 错误1：捕获后什么都不做
+catch (Exception e) { }  // 不要这样！
+
+// 错误2：打印后抛出新异常（丢失堆栈）
+catch (Exception e) {
+    e.printStackTrace();  // 没必要
+    throw new RuntimeException("error");  // 丢失原始异常
+}
+
+// 正确做法
+catch (Exception e) {
+    throw new RuntimeException("error", e);  // 保留原始异常
+}
+
+// 错误3：捕获 Throwable
+catch (Throwable t) { }  // 会捕获 Error，不要这样！</code></pre>
+
+<h2>六、全局异常处理</h2>
+
+<pre><code class="language-java">@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e) {
+        ErrorResponse response = new ErrorResponse(e.getErrorCode(), e.getMessage());
+        return ResponseEntity.badRequest().body(response);
+    }
+    
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGeneral(Exception e) {
+        log.error("Unexpected error", e);
+        ErrorResponse response = new ErrorResponse("SYSTEM_ERROR", "系统繁忙");
+        return ResponseEntity.status(500).body(response);
+    }
+}</code></pre>
+
+<h2>七、异常性能</h2>
+<ul>
+  <li>创建异常代价高（填充堆栈）</li>
+  <li>不要在循环中创建异常</li>
+  <li>控制流不要用异常（用返回值）</li>
+</ul>

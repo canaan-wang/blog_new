@@ -1,0 +1,154 @@
+<h1>Java synchronized 关键字</h1>
+
+<h2>一、什么是 synchronized</h2>
+
+<p><code>synchronized</code> 是 Java 内置的同步机制，用于解决多线程环境下的线程安全问题，保证同一时刻只有一个线程执行临界区代码。</p>
+
+<h2>二、使用方式</h2>
+
+<h3>1. 同步实例方法</h3>
+<pre><code class="language-java">public class Counter {
+    private int count = 0;
+    
+    // 锁对象：当前实例 this
+    public synchronized void increment() {
+        count++;
+    }
+}</code></pre>
+
+<h3>2. 同步静态方法</h3>
+<pre><code class="language-java">public class Counter {
+    private static int count = 0;
+    
+    // 锁对象：类的 Class 对象
+    public static synchronized void increment() {
+        count++;
+    }
+}</code></pre>
+
+<h3>3. 同步代码块</h3>
+<pre><code class="language-java">public class Counter {
+    private int count = 0;
+    private final Object lock = new Object();
+    
+    public void increment() {
+        // 可指定锁对象，更灵活
+        synchronized (lock) {
+            count++;
+        }
+    }
+}</code></pre>
+
+<h2>三、锁对象总结</h2>
+
+<table>
+  <tr><th>使用方式</th><th>锁对象</th><th>作用范围</th></tr>
+  <tr><td>实例方法</td><td>this</td><td>当前实例</td></tr>
+  <tr><td>静态方法</td><td>Class 对象</td><td>整个类</td></tr>
+  <tr><td>代码块(this)</td><td>this</td><td>当前实例</td></tr>
+  <tr><td>代码块(obj)</td><td>指定对象</td><td>指定对象</td></tr>
+  <tr><td>代码块(Xxx.class)</td><td>Class 对象</td><td>整个类</td></tr>
+</table>
+
+<h2>四、底层原理</h2>
+
+<h3>Monitor 机制</h3>
+<p>每个 Java 对象都有一个 Monitor（监视器锁），synchronized 通过 Monitor 实现互斥：</p>
+
+<pre><code class="language-mermaid">graph LR
+    A[无锁] -->|线程1获取| B[偏向锁]
+    B -->|线程2竞争| C[轻量级锁]
+    C -->|竞争激烈| D[重量级锁]
+    D -->|线程释放| A</code></pre>
+
+<h3>锁升级过程（JDK 1.6+）</h3>
+
+<ol>
+  <li><strong>偏向锁</strong>：无竞争时，记录线程 ID，同线程进入无需 CAS</li>
+  <li><strong>轻量级锁</strong>：有竞争时，线程自旋等待，不阻塞</li>
+  <li><strong>重量级锁</strong>：竞争激烈，线程阻塞，OS 调度</li>
+</ol>
+
+<h2>五、可重入性</h2>
+
+<p>synchronized 是可重入锁，同一线程可多次获取锁：</p>
+
+<pre><code class="language-java">public synchronized void methodA() {
+    methodB(); // 同一线程，可以再次获取锁
+}
+
+public synchronized void methodB() {
+    // 执行代码
+}</code></pre>
+
+<h2>六、内存可见性</h2>
+
+<p>synchronized 保证内存可见性：</p>
+<ul>
+  <li><strong>进入</strong>：从主内存刷新变量值</li>
+  <li><strong>退出</strong>：将修改刷新到主内存</li>
+</ul>
+
+<h2>七、与 ReentrantLock 对比</h2>
+
+<table>
+  <tr><th>特性</th><th>synchronized</th><th>ReentrantLock</th></tr>
+  <tr><td>实现</td><td>JVM 层面，字节码</td><td>API 层面，AQS</td></tr>
+  <tr><td>锁获取</td><td>自动获取/释放</td><td>手动 lock/unlock</td></tr>
+  <tr><td>可重入</td><td>是</td><td>是</td></tr>
+  <tr><td>可中断</td><td>否</td><td>是</td></tr>
+  <tr><td>超时获取</td><td>否</td><td>是</td></tr>
+  <tr><td>公平锁</td><td>非公平</td><td>可设置</td></tr>
+  <tr><td>条件变量</td><td>一个（wait/notify）</td><td>多个（Condition）</td></tr>
+  <tr><td>性能</td><td>JDK 6+ 优化后接近</td><td>略优</td></tr>
+</table>
+
+<h2>八、使用示例</h2>
+
+<h3>线程安全单例</h3>
+<pre><code class="language-java">public class Singleton {
+    private static volatile Singleton instance;
+    
+    public static Singleton getInstance() {
+        if (instance == null) {
+            synchronized (Singleton.class) {
+                if (instance == null) {
+                    instance = new Singleton();
+                }
+            }
+        }
+        return instance;
+    }
+}</code></pre>
+
+<h3>生产者消费者</h3>
+<pre><code class="language-java">public class Buffer {
+    private List<Integer> list = new ArrayList<>();
+    private final int capacity = 10;
+    
+    public synchronized void produce(int value) throws InterruptedException {
+        while (list.size() == capacity) {
+            wait(); // 满了，等待消费
+        }
+        list.add(value);
+        notifyAll(); // 通知消费者
+    }
+    
+    public synchronized int consume() throws InterruptedException {
+        while (list.isEmpty()) {
+            wait(); // 空了，等待生产
+        }
+        int value = list.remove(0);
+        notifyAll(); // 通知生产者
+        return value;
+    }
+}</code></pre>
+
+<h2>九、注意事项</h2>
+<ul>
+  <li>锁对象要私有化、final，避免被外部修改</li>
+  <li>锁粒度尽量小，只保护临界区</li>
+  <li>避免在同步代码块中调用外部方法（可能死锁）</li>
+  <li>优先使用 synchronized，复杂场景再用 ReentrantLock</li>
+  <li>注意死锁问题：避免循环等待，按固定顺序获取锁</li>
+</ul>

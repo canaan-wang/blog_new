@@ -1,0 +1,90 @@
+<h1>Redis List</h1>
+
+<h2>一、List 类型简介</h2>
+
+<p>Redis List 是双向链表，支持两端插入和弹出，可用作栈或队列。</p>
+
+<pre><code class="language-mermaid">graph LR
+    A[LPUSH] --> B[Node1] <--> C[Node2] <--> D[Node3] --> E[RPOP]</code></pre>
+
+<h2>二、基础命令</h2>
+
+<h3>插入操作</h3>
+<pre><code class="language-bash">LPUSH queue job1 job2            # 左侧插入（头部）
+RPUSH queue job3                 # 右侧插入（尾部）
+LPUSHX queue job0                # 列表存在才左侧插入
+RPUSHX queue job4                # 列表存在才右侧插入
+LINSERT queue BEFORE job2 job1.5 # 在元素前插入
+LSET queue 0 "new_first"         # 修改指定索引元素</code></pre>
+
+<h3>弹出操作</h3>
+<pre><code class="language-bash">LPOP queue                       # 左侧弹出
+RPOP queue                       # 右侧弹出
+BLPOP queue1 queue2 30           # 阻塞左侧弹出，超时30秒
+BRPOP queue 30                   # 阻塞右侧弹出</code></pre>
+
+<h3>查询操作</h3>
+<pre><code class="language-bash">LRANGE queue 0 -1                # 获取全部元素
+LRANGE queue 0 9                 # 获取前10个
+LLEN queue                       # 获取列表长度
+LINDEX queue 0                   # 获取指定索引元素
+LINDEX queue -1                  # 获取最后一个</code></pre>
+
+<h3>其他操作</h3>
+<pre><code class="language-bash">LREM queue 2 "job1"              # 删除2个值为job1的元素
+LTRIM queue 0 99                 # 只保留前100个
+LMOVE list1 list2 LEFT RIGHT     # 原子移动元素</code></pre>
+
+<h2>三、应用场景</h2>
+
+<h3>1. 消息队列</h3>
+<pre><code class="language-java">// 生产者
+jedis.lpush("msg:queue", "message1");
+jedis.lpush("msg:queue", "message2");
+
+// 消费者（阻塞式）
+List<String> result = jedis.brpop(30, "msg:queue");
+if (result != null) {
+    String message = result.get(1); // 获取消息内容
+    // 处理消息
+}</code></pre>
+
+<h3>2. 最新消息列表</h3>
+<pre><code class="language-java">// 添加新动态
+jedis.lpush("user:1:timeline", "post:1001");
+jedis.ltrim("user:1:timeline", 0, 99); // 只保留100条
+
+// 获取最新动态
+List<String> posts = jedis.lrange("user:1:timeline", 0, 19); // 前20条</code></pre>
+
+<h3>3. 栈（LIFO）</h3>
+<pre><code class="language-bash">LPUSH stack item    # 入栈
+LPOP stack          # 出栈</code></pre>
+
+<h3>4. 队列（FIFO）</h3>
+<pre><code class="language-bash">RPUSH queue item    # 入队
+LPOP queue          # 出队
+
+# 或者
+LPUSH queue item    # 入队
+RPOP queue          # 出队</code></pre>
+
+<h2>四、内部实现</h2>
+
+<p>List 底层使用两种数据结构：</p>
+<ul>
+  <li><strong>ziplist（压缩列表）</strong>：元素少且短时使用</li>
+  <li><strong>quicklist（快速列表）</strong>：3.2+ 默认，多个 ziplist 组成的双向链表</li>
+</ul>
+
+<pre><code class="language-bash"># 配置
+list-max-ziplist-size -2    # 每个ziplist节点大小
+list-compress-depth 0       # 压缩深度，0不压缩</code></pre>
+
+<h2>五、注意事项</h2>
+<ul>
+  <li>List 适合简单队列，复杂场景用 Stream</li>
+  <li>避免使用 LINDEX 遍历大列表（O(N)）</li>
+  <li>使用 LRANGE 分页时注意性能</li>
+  <li>BRPOP/BLPOP 是阻塞的，注意连接池配置</li>
+</ul>

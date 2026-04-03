@@ -1,0 +1,118 @@
+<h1>Redis String</h1>
+
+<h2>一、String 类型简介</h2>
+
+<p>String 是 Redis 最基本的数据类型，是<strong>二进制安全</strong>的，可以存储任何数据（字符串、数字、图片、序列化对象等），最大 512MB。</p>
+
+<h2>二、基础命令</h2>
+
+<h3>设置与获取</h3>
+<pre><code class="language-bash">SET key value                    # 设置值
+GET key                          # 获取值
+SETEX key 60 value               # 设置并指定过期时间（秒）
+SETNX key value                  # 仅当 key 不存在时才设置（分布式锁常用）
+MSET k1 v1 k2 v2 k3 v3           # 批量设置
+MGET k1 k2 k3                    # 批量获取</code></pre>
+
+<h3>数值操作</h3>
+<pre><code class="language-bash">INCR counter                     # 原子自增 1
+INCRBY counter 10                # 原子增加指定值
+DECR counter                     # 原子自减 1
+DECRBY counter 5                 # 原子减少指定值
+INCRBYFLOAT price 1.5            # 浮点数增加</code></pre>
+
+<h3>其他操作</h3>
+<pre><code class="language-bash">STRLEN key                       # 获取长度
+APPEND key "suffix"              # 追加内容
+GETRANGE key 0 3                 # 获取子串
+SETRANGE key 0 "new"             # 替换子串
+GETSET key newvalue              # 设置新值并返回旧值</code></pre>
+
+<h2>三、应用场景</h2>
+
+<h3>1. 缓存</h3>
+<pre><code class="language-java">// 缓存用户信息
+String userKey = "user:" + userId;
+redis.setex(userKey, 3600, JSON.toJSONString(user));
+
+// 读取
+String userJson = redis.get(userKey);
+User user = JSON.parseObject(userJson, User.class);</code></pre>
+
+<h3>2. 计数器</h3>
+<pre><code class="language-java">// 文章阅读数
+String key = "article:read:" + articleId;
+redis.incr(key);
+
+// 获取计数
+String count = redis.get(key);</code></pre>
+
+<h3>3. 分布式锁（SETNX + EXPIRE）</h3>
+<pre><code class="language-java">// 加锁
+Boolean locked = redis.setnx("lock:order:" + orderId, "1");
+if (locked) {
+    redis.expire("lock:order:" + orderId, 30); // 30秒过期，防止死锁
+    try {
+        // 执行业务
+    } finally {
+        redis.del("lock:order:" + orderId);
+    }
+}</code></pre>
+
+<h3>4. 限流</h3>
+<pre><code class="language-java">// 滑动窗口限流
+String key = "rate_limit:" + userId;
+Long count = redis.incr(key);
+if (count == 1) {
+    redis.expire(key, 60); // 60秒窗口
+}
+if (count > 100) {
+    throw new RateLimitException("请求过于频繁");
+}</code></pre>
+
+<h3>5. 共享 Session</h3>
+<pre><code class="language-java">// 存储 Session
+redis.setex("session:" + sessionId, 1800, userId);
+
+// 验证 Session
+String userId = redis.get("session:" + sessionId);</code></pre>
+
+<h3>6. 全局 ID 生成</h3>
+<pre><code class="language-java">// 全局唯一 ID
+long orderId = redis.incr("global:order:id");</code></pre>
+
+<h2>四、内部实现</h2>
+
+<p>Redis String 底层使用 SDS（Simple Dynamic String，简单动态字符串）：</p>
+
+<pre><code class="language-c">struct sdshdr {
+    int len;      // 已使用长度
+    int free;     // 未使用长度
+    char buf[];   // 字符数组
+};</code></pre>
+
+<p>SDS 优势：</p>
+<ul>
+  <li>O(1) 获取长度</li>
+  <li>避免缓冲区溢出</li>
+  <li>减少内存重新分配</li>
+  <li>二进制安全（可存图片等二进制数据）</li>
+</ul>
+
+<h2>五、性能优化</h2>
+
+<ul>
+  <li>批量操作使用 MSET/MGET，减少网络往返</li>
+  <li>大 Value 考虑压缩或拆分</li>
+  <li>热 Key 使用本地缓存 + Redis</li>
+  <li>计数器场景注意持久化策略</li>
+</ul>
+
+<h2>六、注意事项</h2>
+
+<ul>
+  <li>单个 Value 不要过大（&lt; 10KB 为宜）</li>
+  <li>分布式锁注意原子性和续期</li>
+  <li>数值范围在 64 位有符号整数内</li>
+  <li>INCR 是原子操作，线程安全</li>
+</ul>

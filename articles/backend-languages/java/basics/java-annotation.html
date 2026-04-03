@@ -1,0 +1,119 @@
+<h1>Java 注解（Annotation）</h1>
+
+<h2>一、内置注解</h2>
+
+<table>
+  <tr><th>注解</th><th>作用</th></tr>
+  <tr><td>@Override</td><td>标记方法重写</td></tr>
+  <tr><td>@Deprecated</td><td>标记已废弃</td></tr>
+  <tr><td>@SuppressWarnings</td><td>抑制警告</td></tr>
+  <tr><td>@FunctionalInterface</td><td>标记函数式接口</td></tr>
+  <tr><td>@SafeVarargs</td><td>抑制可变参数警告</td></tr>
+</table>
+
+<h2>二、元注解</h2>
+
+<pre><code class="language-java">// 定义注解
+@Target(ElementType.METHOD)        // 作用目标
+@Retention(RetentionPolicy.RUNTIME) // 保留策略
+@Documented                         // 包含在文档中
+@Inherited                          // 子类继承
+public @interface MyAnnotation {
+    String value() default "";
+    int count() default 0;
+}
+
+// 使用
+@MyAnnotation(value = "test", count = 5)
+public void myMethod() {}</code></pre>
+
+<h2>三、@Target 取值</h2>
+
+<table>
+  <tr><th>值</th><th>说明</th></tr>
+  <tr><td>TYPE</td><td>类、接口、枚举</td></tr>
+  <tr><td>FIELD</td><td>字段、枚举常量</td></tr>
+  <tr><td>METHOD</td><td>方法</td></tr>
+  <tr><td>PARAMETER</td><td>参数</td></tr>
+  <tr><td>CONSTRUCTOR</td><td>构造器</td></tr>
+  <tr><td>LOCAL_VARIABLE</td><td>局部变量</td></tr>
+  <tr><td>ANNOTATION_TYPE</td><td>注解</td></tr>
+  <tr><td>PACKAGE</td><td>包</td></tr>
+</table>
+
+<h2>四、反射读取注解</h2>
+
+<pre><code class="language-java">// 获取类注解
+MyAnnotation ann = clazz.getAnnotation(MyAnnotation.class);
+if (ann != null) {
+    System.out.println(ann.value());
+}
+
+// 获取方法注解
+Method method = clazz.getMethod("test");
+MyAnnotation methodAnn = method.getAnnotation(MyAnnotation.class);
+
+// 获取字段注解
+Field field = clazz.getDeclaredField("name");
+MyAnnotation fieldAnn = field.getAnnotation(MyAnnotation.class);
+
+// 获取所有注解
+Annotation[] anns = clazz.getAnnotations();</code></pre>
+
+<h2>五、实战：自定义日志注解</h2>
+
+<pre><code class="language-java">@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Log {
+    String value() default "";
+    boolean printParams() default true;
+}
+
+// AOP 处理
+@Aspect
+@Component
+public class LogAspect {
+    
+    @Around("@annotation(log)")
+    public Object around(ProceedingJoinPoint point, Log log) throws Throwable {
+        String methodName = point.getSignature().getName();
+        long start = System.currentTimeMillis();
+        
+        if (log.printParams()) {
+            System.out.println("Params: " + Arrays.toString(point.getArgs()));
+        }
+        
+        try {
+            return point.proceed();
+        } finally {
+            long cost = System.currentTimeMillis() - start;
+            System.out.println(log.value() + " - " + methodName + " cost: " + cost + "ms");
+        }
+    }
+}
+
+// 使用
+@Service
+public class UserService {
+    
+    @Log("查询用户")
+    public User getUser(Long id) {
+        return userDao.findById(id);
+    }
+}</code></pre>
+
+<h2>六、重复注解（Java 8+）</h2>
+
+<pre><code class="language-java">@Repeatable(Schedules.class)  // 指定容器注解
+public @interface Scheduled {
+    String cron();
+}
+
+public @interface Schedules {
+    Scheduled[] value();
+}
+
+// 使用
+@Scheduled(cron = "0 0 * * *")
+@Scheduled(cron = "0 30 * * *")
+public void task() {}</code></pre>

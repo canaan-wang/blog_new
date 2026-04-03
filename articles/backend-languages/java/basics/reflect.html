@@ -1,0 +1,108 @@
+<h1>Java 反射</h1>
+
+<h2>一、什么是反射</h2>
+<p>反射（Reflection）是 Java 在运行时检查和操作类、方法、字段等成员的能力。通过反射，可以在运行时：</p>
+<ul>
+  <li>获取类的完整信息（构造器、方法、字段）</li>
+  <li>创建对象（无需 new）</li>
+  <li>调用方法（无需直接调用）</li>
+  <li>访问和修改字段（包括私有成员）</li>
+</ul>
+
+<h2>二、获取 Class 对象</h2>
+
+<pre><code class="language-java">// 方式1：类名.class
+Class<?> clazz1 = String.class;
+
+// 方式2：对象.getClass()
+String s = "hello";
+Class<?> clazz2 = s.getClass();
+
+// 方式3：Class.forName()（最常用）
+Class<?> clazz3 = Class.forName("java.lang.String");</code></pre>
+
+<h2>三、常用反射操作</h2>
+
+<h3>3.1 创建对象</h3>
+<pre><code class="language-java">Class<?> clazz = Class.forName("com.example.User");
+
+// 调用无参构造
+Object obj = clazz.newInstance(); // Java 9+ 已废弃
+
+// 调用有参构造
+Constructor<?> ctor = clazz.getConstructor(String.class, int.class);
+Object obj2 = ctor.newInstance("Alice", 25);</code></pre>
+
+<h3>3.2 调用方法</h3>
+<pre><code class="language-java">// 获取方法
+Method method = clazz.getMethod("sayHello", String.class);
+
+// 调用方法
+Object result = method.invoke(obj, "World");</code></pre>
+
+<h3>3.3 访问字段</h3>
+<pre><code class="language-java">// 获取字段
+Field field = clazz.getDeclaredField("name");
+
+// 设置可访问（突破 private）
+field.setAccessible(true);
+
+// 获取值
+String name = (String) field.get(obj);
+
+// 设置值
+field.set(obj, "Bob");</code></pre>
+
+<h2>四、核心 API</h2>
+
+<table>
+  <tr><th>类</th><th>作用</th></tr>
+  <tr><td>Class</td><td>类的元信息</td></tr>
+  <tr><td>Field</td><td>字段信息</td></tr>
+  <tr><td>Method</td><td>方法信息</td></tr>
+  <tr><td>Constructor</td><td>构造器信息</td></tr>
+  <tr><td>Modifier</td><td>修饰符判断</td></tr>
+  <tr><td>Annotation</td><td>注解信息</td></tr>
+</table>
+
+<h2>五、反射的优缺点</h2>
+
+<table>
+  <tr><th>优点</th><th>缺点</th></tr>
+  <tr><td>运行时动态操作</td><td>性能开销大（绕过 JVM 优化）</td></tr>
+  <tr><td>解耦，无需硬编码</td><td>破坏封装性</td></tr>
+  <tr><td>实现通用框架</td><td>编译期无法检查类型安全</td></tr>
+  <tr><td>实现注解处理</td><td>代码可读性差</td></tr>
+</table>
+
+<h2>六、典型应用场景</h2>
+
+<h3>6.1 Spring 依赖注入</h3>
+<pre><code class="language-java">@Autowired
+private UserService userService;
+// Spring 通过反射注入实例</code></pre>
+
+<h3>6.2 JSON 序列化</h3>
+<pre><code class="language-java">// Gson/Jackson 通过反射读取字段值转为 JSON
+String json = gson.toJson(obj);
+Object obj = gson.fromJson(json, Class.forName(className));</code></pre>
+
+<h3>6.3 单元测试</h3>
+<pre><code class="language-java">// JUnit 通过反射调用测试方法
+Method testMethod = clazz.getMethod("testSomething");
+testMethod.invoke(testInstance);</code></pre>
+
+<h2>七、性能优化</h2>
+<ul>
+  <li>缓存 Class、Method、Field 对象，避免重复反射</li>
+  <li>使用 <code>setAccessible(true)</code> 跳过访问检查</li>
+  <li>Java 7+ 使用 MethodHandle 替代反射（更快）</li>
+  <li>关键路径避免反射，编译期生成代码（如 LambdaMetafactory）</li>
+</ul>
+
+<h2>八、注意事项</h2>
+<ul>
+  <li>反射可访问私有成员，破坏封装，谨慎使用</li>
+  <li>Java 9+ 模块化可能限制反射访问</li>
+  <li>反射代码可读性差，需充分注释</li>
+</ul>

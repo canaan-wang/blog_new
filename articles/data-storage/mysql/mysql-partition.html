@@ -1,0 +1,94 @@
+<h1>MySQL 分区表</h1>
+
+<h2>一、分区类型</h2>
+
+<table>
+  <tr><th>类型</th><th>说明</th><th>适用场景</th></tr>
+  <tr><td>RANGE</td><td>范围分区</td><td>时间范围</td></tr>
+  <tr><td>LIST</td><td>列表分区</td><td>离散值</td></tr>
+  <tr><td>HASH</td><td>哈希分区</td><td>均匀分布</td></tr>
+  <tr><td>KEY</td><td>键分区</td><td>类似 HASH</td></tr>
+  <tr><td>复合分区</td><td>子分区</td><td>大表</td></tr>
+</table>
+
+<h2>二、RANGE 分区</h2>
+
+<pre><code class="language-sql">CREATE TABLE logs (
+    id BIGINT AUTO_INCREMENT,
+    log_time DATETIME,
+    message TEXT,
+    PRIMARY KEY (id, log_time)
+) PARTITION BY RANGE (YEAR(log_time)) (
+    PARTITION p2021 VALUES LESS THAN (2022),
+    PARTITION p2022 VALUES LESS THAN (2023),
+    PARTITION p2023 VALUES LESS THAN (2024),
+    PARTITION p_future VALUES LESS THAN MAXVALUE
+);
+
+-- 自动分区裁剪
+SELECT * FROM logs WHERE log_time >= '2023-01-01';  -- 只扫描 p2023</code></pre>
+
+<h2>三、LIST 分区</h2>
+
+<pre><code class="language-sql">CREATE TABLE users (
+    id INT,
+    region VARCHAR(20),
+    name VARCHAR(50)
+) PARTITION BY LIST COLUMNS(region) (
+    PARTITION p_north VALUES IN ('Beijing', 'Tianjin'),
+    PARTITION p_east VALUES IN ('Shanghai', 'Jiangsu'),
+    PARTITION p_south VALUES IN ('Guangdong', 'Fujian'),
+    PARTITION p_other VALUES IN (DEFAULT)
+);</code></pre>
+
+<h2>四、HASH 分区</h2>
+
+<pre><code class="language-sql">CREATE TABLE orders (
+    order_id BIGINT,
+    user_id INT,
+    amount DECIMAL(10,2)
+) PARTITION BY HASH(user_id) PARTITIONS 4;
+
+-- 数据均匀分布到 4 个分区</code></pre>
+
+<h2>五、分区管理</h2>
+
+<pre><code class="language-sql">-- 添加分区
+ALTER TABLE logs ADD PARTITION (
+    PARTITION p2024 VALUES LESS THAN (2025)
+);
+
+-- 删除分区（连同数据）
+ALTER TABLE logs DROP PARTITION p2021;
+
+-- 拆分分区
+ALTER TABLE logs REORGANIZE PARTITION p_future INTO (
+    PARTITION p2024 VALUES LESS THAN (2025),
+    PARTITION p_future VALUES LESS THAN MAXVALUE
+);
+
+-- 合并分区
+ALTER TABLE logs REORGANIZE PARTITION p2021, p2022 INTO (
+    PARTITION p_old VALUES LESS THAN (2023)
+);
+
+-- 查看分区信息
+SELECT PARTITION_NAME, TABLE_ROWS 
+FROM INFORMATION_SCHEMA.PARTITIONS 
+WHERE TABLE_NAME = 'logs';</code></pre>
+
+<h2>六、分区优势</h2>
+<ul>
+  <li><strong>查询优化</strong>：分区裁剪，只扫描相关分区</li>
+  <li><strong>快速删除</strong>：DROP PARTITION 比 DELETE 快得多</li>
+  <li><strong>并行处理</strong>：分区级并行查询</li>
+  <li><strong>独立管理</strong>：可单独备份、恢复分区</li>
+</ul>
+
+<h2>七、注意事项</h2>
+<ul>
+  <li>分区键必须是主键或唯一键的一部分</li>
+  <li>分区数不宜过多（建议 < 1024）</li>
+  <li>定期维护（删除旧分区，添加新分区）</li>
+  <li>分区键选择影响查询性能</li>
+</ul>

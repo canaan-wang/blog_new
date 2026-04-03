@@ -1,0 +1,82 @@
+<h1>JVM 调优实战</h1>
+
+<h2>一、调优目标</h2>
+
+<table>
+  <tr><th>目标</th><th>关注点</th><th>配置方向</th></tr>
+  <tr><td>高吞吐</td><td>减少 GC 总时间</td><td>增大堆、选择 Parallel GC</td></tr>
+  <tr><td>低延迟</td><td>减少 GC 停顿</td><td>G1/ZGC、减小堆</td></tr>
+  <tr><td>小内存</td><td>控制内存占用</td><td>减小各区域大小</td></tr>
+</table>
+
+<h2>二、常用配置模板</h2>
+
+<h3>Web 应用（4G 内存）</h3>
+<pre><code class="language-bash">-Xms2g -Xmx2g
+-Xmn512m
+-XX:MetaspaceSize=128m
+-XX:MaxMetaspaceSize=256m
+-XX:+UseG1GC
+-XX:MaxGCPauseMillis=200
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath=/logs/heapdump.hprof</code></pre>
+
+<h3>高并发服务（8G 内存）</h3>
+<pre><code class="language-bash">-Xms4g -Xmx4g
+-Xmn1536m
+-XX:SurvivorRatio=8
+-XX:+UseConcMarkSweepGC
+-XX:CMSInitiatingOccupancyFraction=70
+-XX:+UseCMSCompactAtFullCollection</code></pre>
+
+<h3>微服务（2G 内存）</h3>
+<pre><code class="language-bash">-Xms1g -Xmx1g
+-XX:+UseParallelGC
+-XX:MaxGCPauseMillis=100</code></pre>
+
+<h2>三、GC 日志分析</h2>
+
+<pre><code class="language-bash"># 开启 GC 日志（JDK 8）
+-XX:+PrintGCDetails
+-XX:+PrintGCDateStamps
+-Xloggc:/var/log/gc.log
+-XX:+UseGCLogFileRotation
+-XX:NumberOfGCLogFiles=10
+-XX:GCLogFileSize=100M</code></pre>
+
+<h2>四、常见问题排查</h2>
+
+<h3>内存泄漏</h3>
+<pre><code class="language-bash"># 1. 查看老年代增长
+jstat -gcutil PID 1000
+
+# 2. 堆转储分析
+jmap -dump:live,format=b,file=heap.hprof PID
+
+# 3. 使用 MAT 分析 Dominator Tree</code></pre>
+
+<h3>Full GC 频繁</h3>
+<pre><code class="language-bash"># 原因：
+# 1. 老年代空间不足
+# 2. 大对象直接进入老年代
+# 3. 内存泄漏
+
+# 解决：
+# 1. 增大老年代
+# 2. 调整晋升阈值 -XX:MaxTenuringThreshold
+# 3. 优化代码，减少对象创建</code></pre>
+
+<h3>GC 停顿过长</h3>
+<pre><code class="language-bash"># 解决：
+# 1. 切换到 G1/ZGC
+# 2. 减小堆大小
+# 3. 优化对象生命周期</code></pre>
+
+<h2>五、调优步骤</h2>
+<ol>
+  <li>确定调优目标（吞吐/延迟/内存）</li>
+  <li>监控当前状态（GC 频率、停顿时间）</li>
+  <li>分析 GC 日志，找出瓶颈</li>
+  <li>调整参数，验证效果</li>
+  <li>持续监控，迭代优化</li>
+</ol>

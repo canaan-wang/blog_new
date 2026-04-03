@@ -1,0 +1,150 @@
+<h1>Linux 常用命令</h1>
+
+<h2>一、文件操作</h2>
+
+<table>
+  <tr><th>命令</th><th>说明</th><th>示例</th></tr>
+  <tr><td>ls</td><td>列出目录</td><td>ls -la, ls -lh</td></tr>
+  <tr><td>cd</td><td>切换目录</td><td>cd ~, cd -</td></tr>
+  <tr><td>pwd</td><td>当前目录</td><td>pwd</td></tr>
+  <tr><td>cp</td><td>复制</td><td>cp -r src dest</td></tr>
+  <tr><td>mv</td><td>移动/重命名</td><td>mv old new</td></tr>
+  <tr><td>rm</td><td>删除</td><td>rm -rf dir</td></tr>
+  <tr><td>touch</td><td>创建空文件</td><td>touch file.txt</td></tr>
+  <tr><td>mkdir</td><td>创建目录</td><td>mkdir -p a/b/c</td></tr>
+  <tr><td>cat</td><td>查看文件</td><td>cat file</td></tr>
+  <tr><td>less</td><td>分页查看</td><td>less file</td></tr>
+  <tr><td>head</td><td>查看开头</td><td>head -n 20 file</td></tr>
+  <tr><td>tail</td><td>查看结尾</td><td>tail -f log</td></tr>
+  <tr><td>find</td><td>查找文件</td><td>find . -name "*.java"</td></tr>
+  <tr><td>grep</td><td>文本搜索</td><td>grep -r "pattern" dir</td></tr>
+</table>
+
+<h2>二、系统监控</h2>
+
+<table>
+  <tr><th>命令</th><th>说明</th></tr>
+  <tr><td>top</td><td>进程监控</td></tr>
+  <tr><td>htop</td><td>增强版 top</td></tr>
+  <tr><td>ps</td><td>查看进程 ps aux | grep java</td></tr>
+  <tr><td>free</td><td>内存使用 free -h</td></tr>
+  <tr><td>df</td><td>磁盘使用 df -h</td></tr>
+  <tr><td>du</td><td>目录大小 du -sh dir</td></tr>
+  <tr><td>netstat</td><td>网络连接 netstat -tlnp</td></tr>
+  <tr><td>ss</td><td>替代 netstat ss -tlnp</td></tr>
+  <tr><td>iostat</td><td>IO 统计</td></tr>
+  <tr><td>vmstat</td><td>系统整体状态</td></tr>
+</table>
+
+<h2>三、文件权限</h2>
+
+<pre><code class="language-bash"># 修改权限
+chmod 755 file      # rwxr-xr-x
+chmod u+x file      # 用户添加执行权限
+chmod -R 755 dir    # 递归修改
+
+# 修改所有者
+chown user:group file
+chown -R user:group dir
+
+# 权限数字
+# 4=读(r) 2=写(w) 1=执行(x)
+# 7=rwx 6=rw- 5=r-x 4=r--</code></pre>
+
+<h2>四、压缩解压</h2>
+
+<pre><code class="language-bash"># tar
+tar -czvf archive.tar.gz dir    # 压缩
+tar -xzvf archive.tar.gz        # 解压
+tar -tvf archive.tar.gz         # 查看内容
+
+# zip
+zip -r archive.zip dir
+unzip archive.zip
+
+# gzip
+gzip file          # 压缩为 file.gz
+gunzip file.gz     # 解压</code></pre>
+
+<h2>五、网络命令</h2>
+
+<pre><code class="language-bash"># 查看网络配置
+ifconfig
+ip addr
+
+# 测试连通
+ping google.com
+curl -I http://example.com
+wget url
+
+# 端口测试
+nc -zv host port
+telnet host port
+
+# DNS 查询
+nslookup example.com
+dig example.com
+
+# 路由跟踪
+traceroute example.com
+mtr example.com</code></pre>
+
+<h2>六、文本处理</h2>
+
+<pre><code class="language-bash"># awk
+awk '{print $1}' file           # 打印第一列
+awk -F: '{print $1}' /etc/passwd
+awk '$3 > 100 {print $0}' file  # 条件过滤
+
+# sed
+sed 's/old/new/g' file          # 替换文本
+sed -i 's/old/new/g' file       # 直接修改文件
+sed -n '10,20p' file            # 打印10-20行
+
+# sort & uniq
+sort file | uniq                # 去重
+sort file | uniq -c             # 统计出现次数
+
+# wc
+wc -l file                      # 统计行数
+wc -w file                      # 统计词数
+
+# xargs
+find . -name "*.log" | xargs rm -f
+cat files.txt | xargs -I {} cp {} dest/</code></pre>
+
+<h2>七、进程管理</h2>
+
+<pre><code class="language-bash"># 前台转后台
+./script.sh &
+Ctrl+Z, then bg
+
+# nohup
+nohup ./script.sh > output.log 2>&1 &
+
+# 查看作业
+jobs
+fg %1      # 前台运行作业1
+bg %1      # 后台运行作业1
+
+# 终止进程
+kill PID
+kill -9 PID    # 强制终止
+killall java   # 终止所有 java 进程
+pkill -f pattern</code></pre>
+
+<h2>八、常用快捷键</h2>
+
+<table>
+  <tr><th>快捷键</th><th>功能</th></tr>
+  <tr><td>Ctrl+C</td><td>终止当前命令</td></tr>
+  <tr><td>Ctrl+Z</td><td>挂起当前命令</td></tr>
+  <tr><td>Ctrl+D</td><td>退出/EOF</td></tr>
+  <tr><td>Ctrl+A</td><td>行首</td></tr>
+  <tr><td>Ctrl+E</td><td>行尾</td></tr>
+  <tr><td>Ctrl+R</td><td>历史命令搜索</td></tr>
+  <tr><td>Ctrl+L</td><td>清屏</td></tr>
+  <tr><td>Tab</td><td>自动补全</td></tr>
+  <tr><td>!!</td><td>上一条命令</td></tr>
+  <tr><td>!n</td><td>第 n 条历史命令</td></tr>
+</table>

@@ -1,0 +1,154 @@
+<h1>MySQL 索引优化</h1>
+
+<h2>一、索引类型</h2>
+
+<table>
+  <tr><th>类型</th><th>说明</th><th>使用场景</th></tr>
+  <tr><td>B+Tree</td><td>默认索引，有序存储</td><td>等值、范围查询</td></tr>
+  <tr><td>Hash</td><td>哈希表实现</td><td>等值查询（Memory引擎）</td></tr>
+  <tr><td>Full-text</td><td>全文索引</td><td>文本搜索</td></tr>
+  <tr><td>Spatial</td><td>空间索引</td><td>地理数据</td></tr>
+</table>
+
+<h2>二、B+Tree 索引结构</h2>
+
+<pre><code class="language-mermaid">graph TD
+    Root[根节点<br>10|30|50]
+    Root --> N1[叶节点<br>1|5|8|10]
+    Root --> N2[叶节点<br>15|20|25|30]
+    Root --> N3[叶节点<br>35|40|45|50]
+    Root --> N4[叶节点<br>55|60|70|80]
+    
+    N1 --> D1[数据页]
+    N2 --> D2[数据页]
+    N3 --> D3[数据页]
+    N4 --> D4[数据页]</code></pre>
+
+<h2>三、索引分类</h2>
+
+<pre><code class="language-sql">-- 主键索引
+CREATE TABLE user (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50)
+);
+
+-- 唯一索引
+CREATE UNIQUE INDEX idx_email ON user(email);
+
+-- 普通索引
+CREATE INDEX idx_name ON user(name);
+
+-- 组合索引
+CREATE INDEX idx_name_age ON user(name, age);
+
+-- 前缀索引
+CREATE INDEX idx_addr ON user(address(10));</code></pre>
+
+<h2>四、索引优化原则</h2>
+
+<h3>最左前缀原则</h3>
+<pre><code class="language-sql">-- 索引 (a, b, c)
+WHERE a=1              -- 使用索引
+WHERE a=1 AND b=2      -- 使用索引
+WHERE a=1 AND b=2 AND c=3  -- 使用索引
+WHERE b=2              -- 不使用索引
+WHERE a=1 AND c=3      -- 仅使用 a</code></pre>
+
+<h3>索引选择性</h3>
+<pre><code class="language-sql">-- 计算选择性
+SELECT COUNT(DISTINCT column) / COUNT(*) FROM table;
+
+-- 选择性越高，索引效果越好
+-- 性别字段选择性低，不适合单独建索引</code></pre>
+
+<h2>五、执行计划分析</h2>
+
+<pre><code class="language-sql">EXPLAIN SELECT * FROM user WHERE name = 'Alice';
+
+-- 关键字段
+-- type: 访问类型 (system > const > eq_ref > ref > range > index > ALL)
+-- key: 实际使用的索引
+-- rows: 扫描行数估计
+-- Extra: 额外信息
+--   Using index: 覆盖索引
+--   Using where: 使用 WHERE 过滤
+--   Using filesort: 需要排序</code></pre>
+
+<h2>六、索引失效场景</h2>
+
+<pre><code class="language-sql">-- 1. 函数操作
+WHERE YEAR(create_time) = 2024  -- 失效
+WHERE create_time >= '2024-01-01' AND create_time < '2025-01-01'  -- 有效
+
+-- 2. 类型隐式转换
+WHERE phone = 13800138000       -- 失效（字符串字段用数字）
+WHERE phone = '13800138000'     -- 有效
+
+-- 3. 前导模糊查询
+WHERE name LIKE '%Alice%'       -- 失效
+WHERE name LIKE 'Alice%'        -- 有效
+
+-- 4. OR 条件
+WHERE id = 1 OR age = 20        -- 可能失效
+WHERE id = 1                    -- 使用索引
+
+-- 5. NOT、!=、<>
+WHERE status != 0               -- 可能失效
+WHERE status IN (1, 2)          -- 可能更好</code></pre>
+
+<h2>七、覆盖索引</h2>
+
+<pre><code class="language-sql">-- 索引包含查询所需的所有列
+CREATE INDEX idx_name_age ON user(name, age);
+
+-- 覆盖索引查询（不回表）
+SELECT name, age FROM user WHERE name = 'Alice';
+
+-- 非覆盖索引（需要回表）
+SELECT * FROM user WHERE name = 'Alice';</code></pre>
+
+<h2八、索引优化实践</h2>
+
+<pre><code class="language-sql">-- 1. 慢查询日志
+SET GLOBAL slow_query_log = 'ON';
+SET GLOBAL long_query_time = 1;
+
+-- 2. 查看索引使用情况
+SHOW STATUS LIKE 'Handler_read%';
+-- Handler_read_key: 使用索引读取行数
+-- Handler_read_rnd_next: 全表扫描行数
+
+-- 3. 索引提示
+SELECT * FROM user USE INDEX (idx_name) WHERE name = 'Alice';
+SELECT * FROM user FORCE INDEX (idx_name) WHERE name = 'Alice';
+
+-- 4. 分析表
+ANALYZE TABLE user;
+OPTIMIZE TABLE user;</code></pre>
+
+<h2>九、索引维护</h2>
+
+<pre><code class="language-sql">-- 查看表索引
+SHOW INDEX FROM user;
+
+-- 删除索引
+DROP INDEX idx_name ON user;
+ALTER TABLE user DROP INDEX idx_name;
+
+-- 查看索引大小
+SELECT 
+    table_name,
+    index_name,
+    ROUND(SUM(data_length)/1024/1024, 2) AS 'size MB'
+FROM information_schema.statistics
+WHERE table_schema = 'mydb'
+GROUP BY table_name, index_name;</code></pre>
+
+<h2>十、优化建议</h2>
+<ul>
+  <li>单表索引数量不超过 5 个</li>
+  <li>频繁更新的字段谨慎建索引</li>
+  <li>小表无需建索引（全表扫描更快）</li>
+  <li>ORDER BY、GROUP BY 字段考虑建索引</li>
+  <li>定期清理无用索引</li>
+</ul>

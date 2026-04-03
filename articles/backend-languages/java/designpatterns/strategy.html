@@ -1,0 +1,63 @@
+<h1>策略模式（Strategy）</h1>
+
+<h2>一、定义</h2>
+<p>定义算法族，分别封装起来，让它们可以互相替换。策略让算法的变化独立于使用算法的客户。</p>
+
+<h2>二、实现</h2>
+<pre><code class="language-java">// 策略接口
+public interface PaymentStrategy {
+    void pay(double amount);
+}
+
+// 具体策略
+public class AlipayStrategy implements PaymentStrategy {
+    public void pay(double amount) {
+        System.out.println("支付宝支付：" + amount);
+    }
+}
+
+public class WechatStrategy implements PaymentStrategy {
+    public void pay(double amount) {
+        System.out.println("微信支付：" + amount);
+    }
+}
+
+// 上下文
+public class PaymentContext {
+    private PaymentStrategy strategy;
+    
+    public void setStrategy(PaymentStrategy strategy) {
+        this.strategy = strategy;
+    }
+    
+    public void executePayment(double amount) {
+        strategy.pay(amount);
+    }
+}</code></pre>
+
+<h2>三、Lambda 简化</h2>
+<pre><code class="language-java">// 使用函数式接口
+public class PaymentService {
+    private Consumer<Double> paymentStrategy;
+    
+    public void setStrategy(Consumer<Double> strategy) {
+        this.paymentStrategy = strategy;
+    }
+    
+    public void pay(double amount) {
+        paymentStrategy.accept(amount);
+    }
+}
+
+// 使用
+PaymentService service = new PaymentService();
+service.setStrategy(amount -> System.out.println("支付：" + amount));
+service.pay(100);</code></pre>
+
+<h2>四、应用场景</h2>
+<ul>
+  <li>多种支付方式</li>
+  <li>不同排序算法</li>
+  <li>文件压缩策略</li>
+  <li>Spring ResourceLoader</li>
+</ul>

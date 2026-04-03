@@ -1,0 +1,54 @@
+<h1>单例模式（Singleton）</h1>
+
+<h2>一、定义</h2>
+<p>确保一个类只有一个实例，并提供一个全局访问点。</p>
+
+<h2>二、饿汉式</h2>
+<pre><code class="language-java">public class Singleton {
+    private static final Singleton INSTANCE = new Singleton();
+    private Singleton() {}
+    public static Singleton getInstance() {
+        return INSTANCE;
+    }
+}</code></pre>
+
+<h2>三、双重检查锁（DCL）</h2>
+<pre><code class="language-java">public class Singleton {
+    private static volatile Singleton instance;
+    private Singleton() {}
+    
+    public static Singleton getInstance() {
+        if (instance == null) {
+            synchronized (Singleton.class) {
+                if (instance == null) {
+                    instance = new Singleton();
+                }
+            }
+        }
+        return instance;
+    }
+}</code></pre>
+
+<h2>四、静态内部类（推荐）</h2>
+<pre><code class="language-java">public class Singleton {
+    private Singleton() {}
+    private static class Holder {
+        private static final Singleton INSTANCE = new Singleton();
+    }
+    public static Singleton getInstance() {
+        return Holder.INSTANCE;
+    }
+}</code></pre>
+
+<h2>五、枚举（最佳）</h2>
+<pre><code class="language-java">public enum Singleton {
+    INSTANCE;
+    public void doSomething() {}
+}</code></pre>
+
+<h2>六、应用场景</h2>
+<ul>
+  <li>配置管理器</li>
+  <li>连接池、线程池</li>
+  <li>缓存、日志管理器</li>
+</ul>

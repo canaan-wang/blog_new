@@ -1,0 +1,150 @@
+<h1>Redis 分布式锁</h1>
+
+<h2>一、为什么需要分布式锁</h2>
+<p>在分布式系统中，多个进程/服务需要互斥访问共享资源，单机锁（synchronized、ReentrantLock）无法满足需求。</p>
+
+<h2>二、SETNX 实现方式</h2>
+
+<pre><code class="language-java">public class RedisLock {
+    private Jedis jedis;
+    
+    /**
+     * 获取锁
+     * @param key 锁标识
+     * @param value 唯一标识（用于安全释放）
+     * @param expireSeconds 过期时间
+     */
+    public boolean tryLock(String key, String value, int expireSeconds) {
+        String result = jedis.set(key, value, "NX", "EX", expireSeconds);
+        return "OK".equals(result);
+    }
+    
+    /**
+     * 释放锁（Lua 脚本保证原子性）
+     */
+    public void unlock(String key, String value) {
+        String script = 
+            "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+            "return redis.call('del', KEYS[1]) " +
+            "else return 0 end";
+        jedis.eval(script, Collections.singletonList(key), 
+            Collections.singletonList(value));
+    }
+}</code></pre>
+
+<h2>三、Redisson 实现</h2>
+
+<pre><code class="language-java">@Configuration
+public class RedissonConfig {
+    @Bean
+    public RedissonClient redissonClient() {
+        Config config = new Config();
+        config.useSingleServer()
+            .setAddress("redis://127.0.0.1:6379");
+        return Redisson.create(config);
+    }
+}
+
+@Service
+public class OrderService {
+    @Autowired
+    private RedissonClient redissonClient;
+    
+    public void createOrder(String productId) {
+        RLock lock = redissonClient.getLock("lock:product:" + productId);
+        try {
+            // 尝试加锁，最多等待10秒，锁30秒后自动释放
+            boolean locked = lock.tryLock(10, 30, TimeUnit.SECONDS);
+            if (locked) {
+                // 扣减库存
+                deductStock(productId);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+}</code></pre>
+
+<h2>四、看门狗机制</h2>
+
+<p>Redisson 自动续期机制：</p>
+
+<pre><code class="language-mermaid">graph TD
+    A[获取锁] --> B[设置过期时间30秒]
+    B --> C[启动看门狗线程]
+    C --> D{业务是否完成?}
+    D -->|否| E[每10秒续期]
+    E --> D
+    D -->|是| F[释放锁]</code></pre>
+
+<pre><code class="language-java">// 不指定 leaseTime 时启用看门狗
+RLock lock = redissonClient.getLock("myLock");
+lock.lock();  // 看门狗自动续期
+try {
+    // 业务逻辑
+} finally {
+    lock.unlock();
+}</code></pre>
+
+<h2>五、红锁（RedLock）算法</h2>
+
+<p>多 Redis 节点下的分布式锁，保证大部分节点加锁成功：</p>
+
+<pre><code class="language-java">@Bean
+public RedissonRedLock redLock() {
+    Config config1 = new Config();
+    config1.useSingleServer().setAddress("redis://host1:6379");
+    RedissonClient redisson1 = Redisson.create(config1);
+    
+    Config config2 = new Config();
+    config2.useSingleServer().setAddress("redis://host2:6379");
+    RedissonClient redisson2 = Redisson.create(config2);
+    
+    Config config3 = new Config();
+    config3.useSingleServer().setAddress("redis://host3:6379");
+    RedissonClient redisson3 = Redisson.create(config3);
+    
+    RLock lock1 = redisson1.getLock("lock1");
+    RLock lock2 = redisson2.getLock("lock2");
+    RLock lock3 = redisson3.getLock("lock3");
+    
+    return new RedissonRedLock(lock1, lock2, lock3);
+}</code></pre>
+
+<h2>六、分布式锁设计要点</h2>
+
+<table>
+  <tr><th>问题</th><th>解决方案</th></tr>
+  <tr><td>死锁</td><td>设置过期时间</td></tr>
+  <tr><td>误释放</td><td>唯一标识 + Lua 脚本验证</td></tr>
+  <tr><td>业务未完成锁过期</td><td>看门狗自动续期</td></tr>
+  <tr><td>单点故障</td><td>RedLock 多节点</td></tr>
+  <tr><td>可重入</td><td>Redisson 内置支持</td></tr>
+</table>
+
+<h2>七、性能优化</h2>
+
+<pre><code class="language-java">// 1. 分段锁（类似 ConcurrentHashMap）
+public void reduceStock(String productId) {
+    int segment = productId.hashCode() % 16;
+    RLock lock = redissonClient.getLock("stock:" + segment);
+    // ...
+}
+
+// 2. 读写锁
+RReadWriteLock rwLock = redissonClient.getReadWriteLock("cacheLock");
+RLock readLock = rwLock.readLock();
+RLock writeLock = rwLock.writeLock();</code></pre>
+
+<h2>八、注意事项</h2>
+<ul>
+  <li>锁粒度尽量小</li>
+  <li>锁超时时间要合理（考虑 GC、网络延迟）</li>
+  <li>异常处理确保释放锁</li>
+  <li>避免锁内嵌套锁（死锁风险）</li>
+  <li>记录锁等待时间，监控性能</li>
+</ul>

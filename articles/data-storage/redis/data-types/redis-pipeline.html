@@ -1,0 +1,96 @@
+<h1>Redis Pipeline</h1>
+
+<h2>一、Pipeline 简介</h2>
+<p>Pipeline 通过一次性发送多个命令并批量接收结果，减少网络往返时间（RTT），显著提升批量操作性能。</p>
+
+<h2>二、性能对比</h2>
+
+<pre><code class="language-mermaid">graph LR
+    A[客户端] -->|CMD1| B[Redis]
+    B -->|R1| A
+    A -->|CMD2| B
+    B -->|R2| A
+    A -->|CMD3| B
+    B -->|R3| A
+    
+    C[客户端] -->|CMD1| D[Redis]
+    C -->|CMD2| D
+    C -->|CMD3| D
+    D -->|R1 R2 R3| C</code></pre>
+
+<table>
+  <tr><th>方式</th><th>1000 条命令耗时</th></tr>
+  <tr><td>普通</td><td>1000 × RTT</td></tr>
+  <tr><td>Pipeline</td><td>1 × RTT</td></tr>
+</table>
+
+<h2三、Java 实现</h2>
+
+<pre><code class="language-java">// Jedis Pipeline
+Pipeline pipeline = jedis.pipelined();
+for (int i = 0; i < 1000; i++) {
+    pipeline.set("key:" + i, "value" + i);
+}
+// 批量发送并获取结果
+List<Object> results = pipeline.syncAndReturnAll();
+
+// 不使用事务的 Pipeline
+Pipeline pipeline = jedis.pipelined();
+pipeline.set("foo", "bar");
+pipeline.get("foo");
+List<Object> results = pipeline.syncAndReturnAll();</code></pre>
+
+<h2>四、事务 + Pipeline</h2>
+
+<pre><code class="language-java">// 在 Pipeline 中使用事务
+Pipeline pipeline = jedis.pipelined();
+pipeline.multi();
+pipeline.set("a", "1");
+pipeline.set("b", "2");
+pipeline.exec();
+List<Object> results = pipeline.syncAndReturnAll();</code></pre>
+
+<h2>五、Lua 脚本 + Pipeline</h2>
+
+<pre><code class="language-java">// 批量执行 Lua 脚本
+String lua = "redis.call('set', KEYS[1], ARGV[1])";
+
+Pipeline pipeline = jedis.pipelined();
+for (int i = 0; i < 100; i++) {
+    pipeline.eval(lua, 1, "key:" + i, "value:" + i);
+}
+pipeline.sync();</code></pre>
+
+<h2>六、批量操作命令</h2>
+
+<p>Redis 也提供原子性的批量命令：</p>
+
+<pre><code class="language-bash">MSET key1 val1 key2 val2 key3 val3
+MGET key1 key2 key3
+
+HMSET user:1 name Alice age 25
+HMGET user:1 name age</code></pre>
+
+<h2>七、注意事项</h2>
+<ul>
+  <li>Pipeline 不是原子操作（除非配合 MULTI）</li>
+  <li>命令会缓冲在客户端内存，数据量大时分批发送</li>
+  <li>Pipeline 不减少服务端处理时间，只减少网络时间</li>
+  <li>建议每批 1000-10000 条命令</li>
+</ul>
+
+<h2>八、最佳实践</h2>
+<pre><code class="language-java">// 分批 Pipeline
+public void batchInsert(List<KeyValue> data) {
+    int batchSize = 1000;
+    for (int i = 0; i < data.size(); i += batchSize) {
+        List<KeyValue> batch = data.subList(i, 
+            Math.min(i + batchSize, data.size()));
+        
+        Pipeline pipeline = jedis.pipelined();
+        for (KeyValue kv : batch) {
+            pipeline.set(kv.key, kv.value);
+        }
+        pipeline.sync();
+    }
+}</code></pre>

@@ -1,0 +1,222 @@
+<h1>Go sync.Pool 详解</h1>
+
+<p><code>sync.Pool</code> 是 Go 提供的对象池，用于缓存和复用临时对象，减少 GC 压力和内存分配开销，特别适合高并发场景下频繁创建和销毁对象的场景。</p>
+
+<h2>适用场景</h2>
+
+<ul>
+  <li>频繁分配和释放相同类型的对象（如 buffer、结构体）</li>
+  <li>需要减少 GC 压力的高性能服务</li>
+  <li>创建成本高的对象（如大数组、复杂结构体）</li>
+</ul>
+
+<h2>核心 API</h2>
+
+<table>
+  <tr><th>方法</th><th>说明</th></tr>
+  <tr><td><code>Get() any</code></td><td>从池中获取对象（池空则调用 New 创建）</td></tr>
+  <tr><td><code>Put(x any)</code></td><td>将对象归还池中</td></tr>
+</table>
+
+<h2>使用示例</h2>
+
+<h3>基础使用</h3>
+
+<pre><code class="language-go">package main
+
+import (
+    "bytes"
+    "fmt"
+    "sync"
+)
+
+// 创建 bytes.Buffer 对象池
+var bufferPool = sync.Pool{
+    New: func() any {
+        return new(bytes.Buffer)
+    },
+}
+
+func processData(data string) string {
+    // 从池中获取 buffer
+    buf := bufferPool.Get().(*bytes.Buffer)
+    defer bufferPool.Put(buf) // 使用完归还
+
+    buf.Reset() // 重置后再使用
+    buf.WriteString("Processed: ")
+    buf.WriteString(data)
+    
+    return buf.String()
+}
+
+func main() {
+    for i := 0; i < 10; i++ {
+        result := processData(fmt.Sprintf("data-%d", i))
+        fmt.Println(result)
+    }
+}</code></pre>
+
+<h3>大缓冲区复用</h3>
+
+<pre><code class="language-go">var bigBufferPool = sync.Pool{
+    New: func() any {
+        return make([]byte, 64*1024) // 64KB 缓冲区
+    },
+}
+
+func handleRequest(data []byte) []byte {
+    buf := bigBufferPool.Get().([]byte)
+    defer bigBufferPool.Put(buf)
+
+    // 处理数据...
+    copy(buf, data)
+    
+    // 返回处理结果（需要复制，因为 buf 要归还池）
+    result := make([]byte, len(data))
+    copy(result, buf[:len(data)])
+    return result
+}</code></pre>
+
+<h2>底层原理</h2>
+
+<pre><code class="language-go">type Pool struct {
+    noCopy noCopy
+
+    local     unsafe.Pointer // [P]poolLocal 数组，每个 P 一个
+    localSize uintptr        // local 数组大小
+
+    victim     unsafe.Pointer // 上一轮 GC 的 local，用于缓冲
+    victimSize uintptr
+
+    New func() any // 创建新对象的函数
+}
+
+type poolLocal struct {
+    private any      // 私有对象（仅当前 P 可用）
+    shared  poolChain // 共享链表（当前 P 生产，其他 P 可偷取）
+}</code></pre>
+
+<h3>设计特点</h3>
+
+<pre><code class="language-mermaid">graph TD
+    A["Get 操作"] --> B{"private 有对象?"}
+    B -->|是| C["直接返回 private"]
+    B -->|否| D["从 shared 链表获取"]
+    D --> E{"shared 有对象?"}
+    E -->|否| F["从其他 P 的 shared 偷取"]
+    F --> G{"偷取成功?"}
+    G -->|否| H["调用 New 创建"]
+    
+    I["Put 操作"] --> J{"private 为空?"}
+    J -->|是| K["放入 private"]
+    J -->|否| L["放入 shared 链表"]</code></pre>
+
+<ul>
+  <li><strong>每个 P 独立</strong>：每个处理器（P）有自己的 poolLocal，减少锁竞争</li>
+  <li><strong>private 优先</strong>：无锁访问，性能最优</li>
+  <li><strong>shared 共享</strong>：当前 P 生产的对象可被其他 P 偷取（work stealing）</li>
+  <li><strong>victim 缓冲</strong>：GC 后保留上一轮的对象，减少 GC 后立即分配</li>
+</ul>
+
+<h2>使用注意事项</h2>
+
+<h3>1. 对象归还前必须重置</h3>
+
+<pre><code class="language-go">type Buffer struct {
+    data []byte
+}
+
+var pool = sync.Pool{
+    New: func() any { return &Buffer{} },
+}
+
+func useBuffer() {
+    buf := pool.Get().(*Buffer)
+    defer pool.Put(buf)
+
+    buf.data = buf.data[:0] // 重置！清除旧数据
+    // 使用 buf...
+}</code></pre>
+
+<h3>2. 不要存储池中的对象</h3>
+
+<pre><code class="language-go">// 错误：保存了池中对象的引用
+var globalBuf *bytes.Buffer
+
+func bad() {
+    buf := pool.Get().(*bytes.Buffer)
+    globalBuf = buf // 危险！
+    pool.Put(buf)   // 此时 buf 可能被其他 goroutine 使用
+}</code></pre>
+
+<h3>3. 不要对 Pool 做类型断言外的假设</h3>
+
+<pre><code class="language-go">// 错误假设：Get 总是返回非 nil
+buf := pool.Get().(*bytes.Buffer) // 如果 New 为 nil，Get 返回 nil
+if buf == nil {
+    // 处理 nil 情况
+}</code></pre>
+
+<h3>4. 对象会被 GC 回收</h3>
+
+<pre><code class="language-go">// 注意：sync.Pool 中的对象可能在 GC 时被回收
+// 不要假设 Put 的对象一定能再次 Get 到
+
+var pool = sync.Pool{
+    New: func() any {
+        fmt.Println("Create new") // GC 后可能再次打印
+        return &MyStruct{}
+    },
+}</code></pre>
+
+<h3>5. 适合无状态对象</h3>
+
+<pre><code class="language-go">// 适合：无状态、可重置的对象
+var bytePool = sync.Pool{
+    New: func() any { return make([]byte, 1024) },
+}
+
+// 不适合：带状态、与特定请求绑定的对象（如 db 连接）
+// db 连接应使用专门的连接池</code></pre>
+
+<h2>性能对比</h2>
+
+<pre><code class="language-go">// 不使用 Pool：每次分配新内存
+func withoutPool(n int) {
+    for i := 0; i < n; i++ {
+        buf := make([]byte, 1024)
+        _ = buf
+    }
+}
+
+// 使用 Pool：复用内存
+func withPool(n int) {
+    for i := 0; i < n; i++ {
+        buf := pool.Get().([]byte)
+        _ = buf
+        pool.Put(buf)
+    }
+}
+
+// 在高并发场景下，使用 Pool 可减少 90%+ 的内存分配</code></pre>
+
+<h2>最佳实践</h2>
+
+<table>
+  <tr><th>建议</th><th>说明</th></tr>
+  <tr><td>用完即还</td><td>使用 defer 确保 Put 被调用</td></tr>
+  <tr><td>重置状态</td><td>归还前清除对象中的敏感数据</td></tr>
+  <tr><td>设置 New</td><td>确保 Get 不会返回 nil</td></tr>
+  <tr><td>无状态对象</td><td>只缓存无状态、可重置的对象</td></tr>
+  <tr><td>不要依赖</td><td>对象可能在 GC 时被回收</td></tr>
+</table>
+
+<h2>总结</h2>
+
+<p><code>sync.Pool</code> 是高并发场景下的性能优化利器，通过对象复用显著减少内存分配和 GC 压力。但要注意：</p>
+<ul>
+  <li>仅用于无状态临时对象</li>
+  <li>使用完必须归还</li>
+  <li>归还前重置状态</li>
+  <li>不要保存池中对象的引用</li>
+</ul>

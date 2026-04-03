@@ -1,0 +1,116 @@
+<h1>Java 泛型</h1>
+
+<h2>一、为什么需要泛型</h2>
+
+<p>泛型之前，集合存储的是 Object，取出时需强制类型转换，易出错：</p>
+
+<pre><code class="language-java">List list = new ArrayList();
+list.add("hello");
+list.add(123); // 编译不报错
+String s = (String) list.get(1); // 运行时 ClassCastException</code></pre>
+
+<p>泛型提供<strong>编译期类型检查</strong>，避免运行时类型错误：</p>
+
+<pre><code class="language-java">List<String> list = new ArrayList<>();
+list.add("hello");
+// list.add(123); // 编译报错！
+String s = list.get(0); // 无需强制转换</code></pre>
+
+<h2>二、泛型基础</h2>
+
+<h3>2.1 泛型类</h3>
+<pre><code class="language-java">// 定义泛型类
+public class Box<T> {
+    private T content;
+    
+    public void set(T content) { this.content = content; }
+    public T get() { return content; }
+}
+
+// 使用
+Box<String> stringBox = new Box<>();
+stringBox.set("hello");
+String s = stringBox.get();</code></pre>
+
+<h3>2.2 泛型方法</h3>
+<pre><code class="language-java">public class Util {
+    // 泛型方法
+    public static <T> void print(T item) {
+        System.out.println(item);
+    }
+    
+    // 泛型返回
+    public static <T> T getFirst(List<T> list) {
+        return list.isEmpty() ? null : list.get(0);
+    }
+}</code></pre>
+
+<h3>2.3 泛型接口</h3>
+<pre><code class="language-java">public interface Comparable<T> {
+    int compareTo(T o);
+}
+
+// 实现
+public class Student implements Comparable<Student> {
+    @Override
+    public int compareTo(Student other) {
+        return this.age - other.age;
+    }
+}</code></pre>
+
+<h2>三、类型通配符</h2>
+
+<h3>3.1 上界通配符 &lt;? extends T&gt;</h3>
+<p>表示 T 或 T 的子类，用于读取：</p>
+<pre><code class="language-java">public void printNumbers(List<? extends Number> list) {
+    for (Number n : list) {
+        System.out.println(n);
+    }
+    // list.add(1); // 编译报错！不能写入
+}
+
+List<Integer> ints = Arrays.asList(1, 2, 3);
+printNumbers(ints); // OK</code></pre>
+
+<h3>3.2 下界通配符 &lt;? super T&gt;</h3>
+<p>表示 T 或 T 的父类，用于写入：</p>
+<pre><code class="language-java">public void addNumbers(List<? super Integer> list) {
+    list.add(1); // OK
+    list.add(2); // OK
+    // Integer i = list.get(0); // 编译报错！读取只能是 Object
+}
+
+List<Number> nums = new ArrayList<>();
+addNumbers(nums); // OK</code></pre>
+
+<h3>3.3 PECS 原则</h3>
+<ul>
+  <li><strong>P</strong>roducer <strong>E</strong>xtends：生产者使用 extends（读取）</li>
+  <li><strong>C</strong>onsumer <strong>S</strong>uper：消费者使用 super（写入）</li>
+</ul>
+
+<h2>四、类型擦除</h2>
+<p>Java 泛型是编译期特性，运行时类型信息被擦除：</p>
+
+<pre><code class="language-java">List<String> strList = new ArrayList<>();
+List<Integer> intList = new ArrayList<>();
+System.out.println(strList.getClass() == intList.getClass()); // true
+
+// 编译后都变成 List，即类型擦除</code></pre>
+
+<h2>五、限制与注意事项</h2>
+<ul>
+  <li>不能创建泛型数组：<code>new T[10]</code> 报错</li>
+  <li>不能实例化类型参数：<code>new T()</code> 报错</li>
+  <li>不能用基本类型：<code>List&lt;int&gt;</code> 报错，用 <code>List&lt;Integer&gt;</code></li>
+  <li>静态方法不能使用类类型参数</li>
+  <li>运行时无法获取泛型类型（可通过反射获取签名）</li>
+</ul>
+
+<h2>六、最佳实践</h2>
+<ul>
+  <li>优先使用泛型集合，避免原始类型</li>
+  <li>利用钻石运算符 &lt;&gt; 简化代码</li>
+  <li>设计 API 时考虑 PECS 原则</li>
+  <li>泛型命名：T（Type）、E（Element）、K（Key）、V（Value）、N（Number）</li>
+</ul>

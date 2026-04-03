@@ -1,0 +1,161 @@
+<h1>Java CyclicBarrier</h1>
+
+<h2>一、简介</h2>
+<p>CyclicBarrier 是循环屏障，让一组线程互相等待，到达屏障时被阻塞，直到所有线程都到达后才继续执行。可重复使用（Cyclic）。</p>
+
+<h2>二、基本用法</h2>
+
+<pre><code class="language-java">import java.util.concurrent.CyclicBarrier;
+
+public class CyclicBarrierDemo {
+    public static void main(String[] args) {
+        int parties = 3;
+        CyclicBarrier barrier = new CyclicBarrier(parties);
+        
+        for (int i = 0; i < parties; i++) {
+            final int id = i;
+            new Thread(() -> {
+                try {
+                    System.out.println("Thread " + id + " is ready");
+                    barrier.await();  // 到达屏障，等待其他线程
+                    System.out.println("Thread " + id + " continues");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+}</code></pre>
+
+<h2>三、核心方法</h2>
+
+<table>
+  <tr><th>方法</th><th>说明</th></tr>
+  <tr><td>CyclicBarrier(int parties)</td><td>构造，指定参与线程数</td></tr>
+  <tr><td>CyclicBarrier(int parties, Runnable barrierAction)</td><td>构造，带屏障操作</td></tr>
+  <tr><td>int await()</td><td>到达屏障并等待</td></tr>
+  <tr><td>int await(long timeout, TimeUnit unit)</td><td>超时等待</td></tr>
+  <tr><td>void reset()</td><td>重置屏障</td></tr>
+  <tr><td>boolean isBroken()</td><td>屏障是否损坏</td></tr>
+  <tr><td>int getNumberWaiting()</td><td>当前等待线程数</td></tr>
+</table>
+
+<h2>四、屏障操作（Runnable）</h2>
+
+<pre><code class="language-java">CyclicBarrier barrier = new CyclicBarrier(3, () -> {
+    System.out.println("All parties arrived! Barrier action executed.");
+});
+
+// 当第3个线程调用 await() 时，先执行 barrierAction，然后所有线程继续</code></pre>
+
+<h2>五、应用场景</h2>
+
+<h3>1. 分阶段计算</h3>
+<pre><code class="language-java">public class ParallelMatrixSolver {
+    private final CyclicBarrier barrier;
+    private final double[][] matrix;
+    private final int rows;
+    
+    public ParallelMatrixSolver(double[][] matrix, int threads) {
+        this.matrix = matrix;
+        this.rows = matrix.length;
+        this.barrier = new CyclicBarrier(threads, () -> {
+            System.out.println("Phase completed, validating...");
+        });
+    }
+    
+    public void solve() {
+        int threads = barrier.getParties();
+        for (int i = 0; i < threads; i++) {
+            final int threadId = i;
+            new Thread(() -> {
+                try {
+                    for (int phase = 0; phase < 10; phase++) {
+                        // 每个线程处理一部分行
+                        processRows(threadId, phase);
+                        barrier.await();  // 等待其他线程完成当前阶段
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+}</code></pre>
+
+<h3>2. 多线程分阶段任务</h3>
+<pre><code class="language-java">public class MultiPhaseTask {
+    public static void main(String[] args) {
+        CyclicBarrier barrier = new CyclicBarrier(3);
+        
+        Runnable task = () -> {
+            try {
+                // 阶段1：数据加载
+                loadData();
+                barrier.await();
+                
+                // 阶段2：数据处理
+                processData();
+                barrier.await();
+                
+                // 阶段3：结果保存
+                saveResult();
+                barrier.await();
+                
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        };
+        
+        for (int i = 0; i < 3; i++) {
+            new Thread(task).start();
+        }
+    }
+}</code></pre>
+
+<h3>3. 重复使用的比赛场景</h3>
+<pre><code class="language-java">public class RaceGame {
+    public static void main(String[] args) {
+        CyclicBarrier startLine = new CyclicBarrier(4, () -> 
+            System.out.println("Race started!")
+        );
+        
+        for (int round = 1; round <= 3; round++) {
+            System.out.println("Round " + round);
+            
+            for (int i = 0; i < 4; i++) {
+                final int player = i;
+                new Thread(() -> {
+                    try {
+                        System.out.println("Player " + player + " ready");
+                        startLine.await();
+                        run();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+            }
+            
+            // 重置用于下一轮
+            startLine.reset();
+        }
+    }
+}</code></pre>
+
+<h2>六、CountDownLatch vs CyclicBarrier</h2>
+
+<table>
+  <tr><th>特性</th><th>CountDownLatch</th><th>CyclicBarrier</th></tr>
+  <tr><td>使用次数</td><td>一次性</td><td>可重复使用</td></tr>
+  <tr><td>等待关系</td><td>一个/多个等一个/多个</td><td>互相等待</td></tr>
+  <tr><td>计数方向</td><td>减到 0</td><td>加到指定值</td></tr>
+  <tr><td>主从关系</td><td>有主从之分</td><td>线程对等</td></tr>
+  <tr><td>异常处理</td><td>无损坏概念</td><td>线程中断会损坏屏障</td></tr>
+</table>
+
+<h2>七、注意事项</h2>
+<ul>
+  <li>线程中断会导致屏障损坏（isBroken() = true），需 reset() 恢复</li>
+  <li>await() 返回的是到达索引，0 表示最后一个到达</li>
+  <li>适合多线程分阶段协作的场景</li>
+</ul>

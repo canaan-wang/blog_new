@@ -1,0 +1,107 @@
+<h1>观察者模式（Observer）</h1>
+
+<h2>一、定义</h2>
+<p>定义对象间的一对多依赖，当一个对象状态改变时，所有依赖者自动收到通知。</p>
+
+<h2>二、Java 实现</h2>
+<pre><code class="language-java">import java.util.ArrayList;
+import java.util.List;
+
+// 主题
+public class Subject {
+    private List<Observer> observers = new ArrayList<>();
+    private int state;
+    
+    public void attach(Observer observer) {
+        observers.add(observer);
+    }
+    
+    public void detach(Observer observer) {
+        observers.remove(observer);
+    }
+    
+    public void notifyAllObservers() {
+        for (Observer observer : observers) {
+            observer.update(state);
+        }
+    }
+    
+    public void setState(int state) {
+        this.state = state;
+        notifyAllObservers();
+    }
+}
+
+// 观察者接口
+public interface Observer {
+    void update(int state);
+}
+
+// 具体观察者
+public class ConcreteObserver implements Observer {
+    private String name;
+    
+    public void update(int state) {
+        System.out.println(name + " received: " + state);
+    }
+}</code></pre>
+
+<h2>三、JDK 内置支持</h2>
+<pre><code class="language-java">import java.util.Observable;
+import java.util.Observer;
+
+public class DataStore extends Observable {
+    private String data;
+    
+    public void setData(String data) {
+        this.data = data;
+        setChanged();  // 标记状态已改变
+        notifyObservers(data);
+    }
+}
+
+// 观察者
+public class DataView implements Observer {
+    public void update(Observable o, Object arg) {
+        System.out.println("Data changed: " + arg);
+    }
+}</code></pre>
+
+<h2>四、Spring 事件机制</h2>
+<pre><code class="language-java">// 定义事件
+public class OrderEvent extends ApplicationEvent {
+    private Long orderId;
+    
+    public OrderEvent(Object source, Long orderId) {
+        super(source);
+        this.orderId = orderId;
+    }
+}
+
+// 发布事件
+@Service
+public class OrderService {
+    @Autowired
+    private ApplicationEventPublisher publisher;
+    
+    public void createOrder() {
+        // 创建订单...
+        publisher.publishEvent(new OrderEvent(this, orderId));
+    }
+}
+
+// 监听事件
+@Component
+public class OrderListener {
+    @EventListener
+    public void handleOrder(OrderEvent event) {
+        // 处理订单事件
+    }
+}</code></pre>
+
+<h2>五、应用场景</h2>
+<ul>
+  <li>事件驱动系统</li>
+  <li>MVC 模式</li>
+  <li>消息订阅</li>
+</ul>

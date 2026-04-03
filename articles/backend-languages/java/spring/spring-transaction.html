@@ -1,0 +1,159 @@
+<h1>Spring 事务管理</h1>
+
+<h2>一、事务管理方式</h2>
+
+<h3>声明式事务（推荐）</h3>
+<pre><code class="language-java">@Service
+public class OrderService {
+    
+    @Transactional
+    public void createOrder(Order order) {
+        // 自动开启、提交/回滚事务
+        orderDao.save(order);
+        inventoryDao.deduct(order.getProductId(), order.getQuantity());
+    }
+}</code></pre>
+
+<h3>编程式事务</h3>
+<pre><code class="language-java">@Autowired
+private PlatformTransactionManager transactionManager;
+
+public void createOrder(Order order) {
+    TransactionStatus status = transactionManager.getTransaction(
+        new DefaultTransactionDefinition());
+    try {
+        orderDao.save(order);
+        inventoryDao.deduct(order.getProductId(), order.getQuantity());
+        transactionManager.commit(status);
+    } catch (Exception e) {
+        transactionManager.rollback(status);
+        throw e;
+    }
+}</code></pre>
+
+<h2>二、@Transactional 参数</h2>
+
+<table>
+  <tr><th>参数</th><th>说明</th><th>默认值</th></tr>
+  <tr><td>propagation</td><td>传播行为</td><td>REQUIRED</td></tr>
+  <tr><td>isolation</td><td>隔离级别</td><td>DEFAULT</td></tr>
+  <tr><td>readOnly</td><td>只读事务</td><td>false</td></tr>
+  <tr><td>timeout</td><td>超时时间（秒）</td><td>-1</td></tr>
+  <tr><td>rollbackFor</td><td>回滚异常</td><td>RuntimeException</td></tr>
+  <tr><td>noRollbackFor</td><td>不回滚异常</td><td>无</td></tr>
+</table>
+
+<h2>三、事务传播行为</h2>
+
+<table>
+  <tr><th>传播行为</th><th>说明</th></tr>
+  <tr><td>REQUIRED</td><td>默认，当前无事务则新建，有则加入</td></tr>
+  <tr><td>REQUIRES_NEW</td><td>新建事务，挂起当前事务</td></tr>
+  <tr><td>NESTED</td><td>嵌套事务（保存点）</td></tr>
+  <tr><td>SUPPORTS</td><td>有事务则加入，无则以非事务执行</td></tr>
+  <tr><td>NOT_SUPPORTED</td><td>以非事务执行，挂起当前事务</td></tr>
+  <tr><td>MANDATORY</td><td>必须有事务，否则抛异常</td></tr>
+  <tr><td>NEVER</td><td>必须无事务，否则抛异常</td></tr>
+</table>
+
+<pre><code class="language-mermaid">graph TD
+    A[方法A REQUIRED] --> B{已有事务?}
+    B -->|是| C[加入事务]
+    B -->|否| D[创建新事务]
+    
+    E[方法B REQUIRES_NEW] --> F[挂起当前事务]
+    F --> G[创建独立事务]
+    G --> H[恢复挂起事务]</code></pre>
+
+<h2>四、事务失效场景</h2>
+
+<h3>1. 非 public 方法</h3>
+<pre><code class="language-java">@Transactional  // 失效！
+private void method() {}</code></pre>
+
+<h3>2. 同类方法调用</h3>
+<pre><code class="language-java">@Service
+public class Service {
+    public void methodA() {
+        methodB();  // 事务失效！绕过了代理
+    }
+    
+    @Transactional
+    public void methodB() {}
+}
+
+// 解决方案1：注入自身代理
+@Autowired
+private Service self;
+
+public void methodA() {
+    self.methodB();  // 通过代理调用
+}
+
+// 解决方案2：拆分到不同类</code></pre>
+
+<h3>3. 异常被捕获</h3>
+<pre><code class="language-java">@Transactional
+public void method() {
+    try {
+        dao.save();
+    } catch (Exception e) {
+        // 异常被捕获，事务正常提交！
+        log.error(e);
+    }
+}</code></pre>
+
+<h3>4. 异常类型不匹配</h3>
+<pre><code class="language-java">// 默认只回滚 RuntimeException
+@Transactional  // SQLException 不回滚！
+public void method() throws SQLException {
+    dao.save();
+}
+
+// 正确配置
+@Transactional(rollbackFor = Exception.class)</code></pre>
+
+<h2>五、事务隔离级别</h2>
+
+<pre><code class="language-java">@Transactional(isolation = Isolation.READ_COMMITTED)</code></pre>
+
+<table>
+  <tr><th>级别</th><th>脏读</th><th>不可重复读</th><th>幻读</th></tr>
+  <tr><td>READ_UNCOMMITTED</td><td>可能</td><td>可能</td><td>可能</td></tr>
+  <tr><td>READ_COMMITTED</td><td>不可能</td><td>可能</td><td>可能</td></tr>
+  <tr><td>REPEATABLE_READ</td><td>不可能</td><td>不可能</td><td>可能</td></tr>
+  <tr><td>SERIALIZABLE</td><td>不可能</td><td>不可能</td><td>不可能</td></tr>
+</table>
+
+<h2>六、只读事务优化</h2>
+
+<pre><code class="language-java">@Transactional(readOnly = true)
+public List<User> getUsers() {
+    return userDao.findAll();
+}</code></pre>
+
+<p>作用：</p>
+<ul>
+  <li>Spring 不刷新持久化上下文</li>
+  <li>Hibernate 不检测脏数据</li>
+  <li>某些数据库可优化查询计划</li>
+</ul>
+
+<h2>七、分布式事务</h2>
+
+<pre><code class="language-java">// Seata 分布式事务
+@GlobalTransactional
+public void purchase() {
+    orderService.createOrder();      // DB1
+    storageService.deduct();         // DB2
+    accountService.debit();          // DB3
+}</code></pre>
+
+<h2>八、最佳实践</h2>
+<ul>
+  <li>事务方法尽量简短，减少锁持有时间</li>
+  <li>事务内避免 RPC 调用、HTTP 请求</li>
+  <li>查询操作使用 readOnly = true</li>
+  <li>明确指定 rollbackFor = Exception.class</li>
+  <li>避免事务嵌套过深</li>
+</ul>

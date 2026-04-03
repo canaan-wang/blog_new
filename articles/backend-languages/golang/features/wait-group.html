@@ -1,0 +1,210 @@
+<h1>Go sync.WaitGroup 详解</h1>
+
+<p><code>sync.WaitGroup</code> 是 Go 语言中用于等待一组 goroutine 执行完成的同步原语，是并发编程中最常用的同步工具之一。</p>
+
+<h2>核心概念</h2>
+
+<p>WaitGroup 维护一个计数器，通过以下三个方法控制：</p>
+
+<table>
+  <tr><th>方法</th><th>作用</th></tr>
+  <tr><td><code>Add(delta int)</code></td><td>增加计数器值（delta 可为负数）</td></tr>
+  <tr><td><code>Done()</code></td><td>计数器减 1（等价于 Add(-1)）</td></tr>
+  <tr><td><code>Wait()</code></td><td>阻塞直到计数器为 0</td></tr>
+</table>
+
+<h2>基本使用</h2>
+
+<h3>等待多个 goroutine 完成</h3>
+
+<pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "sync"
+    "time"
+)
+
+func worker(id int, wg *sync.WaitGroup) {
+    defer wg.Done() // 完成时减 1
+
+    fmt.Printf("Worker %d starting\n", id)
+    time.Sleep(time.Second)
+    fmt.Printf("Worker %d done\n", id)
+}
+
+func main() {
+    var wg sync.WaitGroup
+
+    for i := 1; i <= 3; i++ {
+        wg.Add(1) // 增加计数
+        go worker(i, &wg)
+    }
+
+    wg.Wait() // 等待所有 goroutine 完成
+    fmt.Println("All workers completed")
+}</code></pre>
+
+<h3>批量任务处理</h3>
+
+<pre><code class="language-go">func processUrls(urls []string) {
+    var wg sync.WaitGroup
+    results := make(chan string, len(urls))
+
+    for _, url := range urls {
+        wg.Add(1)
+        go func(u string) {
+            defer wg.Done()
+            // 处理 URL...
+            results <- fmt.Sprintf("Processed: %s", u)
+        }(url)
+    }
+
+    // 等待所有 goroutine 完成后关闭 channel
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+
+    // 收集结果
+    for res := range results {
+        fmt.Println(res)
+    }
+}</code></pre>
+
+<h2>使用注意事项</h2>
+
+<h3>1. Add 必须在 Wait 之前</h3>
+
+<pre><code class="language-go">// 错误：Add 在 goroutine 中，可能 Wait 时还未执行 Add
+go func() {
+    wg.Add(1) // 错误！
+    defer wg.Done()
+    // ...
+}()
+wg.Wait()
+
+// 正确：Add 在启动 goroutine 之前
+wg.Add(1)
+go func() {
+    defer wg.Done()
+    // ...
+}()
+wg.Wait()</code></pre>
+
+<h3>2. Done 调用次数不能过多</h3>
+<p>Done 调用次数超过 Add 的值会导致 panic：</p>
+
+<pre><code class="language-go">var wg sync.WaitGroup
+wg.Add(1)
+wg.Done()
+wg.Done() // panic: sync: negative WaitGroup counter</code></pre>
+
+<h3>3. WaitGroup 不可复制</h3>
+<p>作为参数传递时必须使用指针：</p>
+
+<pre><code class="language-go">func worker(wg *sync.WaitGroup) { // 必须用指针
+    defer wg.Done()
+    // ...
+}</code></pre>
+
+<h3>4. 与 context 结合使用</h3>
+
+<pre><code class="language-go">func worker(ctx context.Context, id int, wg *sync.WaitGroup) {
+    defer wg.Done()
+    
+    select {
+    case <-ctx.Done():
+        fmt.Printf("Worker %d cancelled\n", id)
+        return
+    case <-time.After(time.Second):
+        fmt.Printf("Worker %d done\n", id)
+    }
+}
+
+func main() {
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
+
+    var wg sync.WaitGroup
+    for i := 0; i < 5; i++ {
+        wg.Add(1)
+        go worker(ctx, i, &wg)
+    }
+    wg.Wait()
+}</code></pre>
+
+<h2>底层原理</h2>
+
+<pre><code class="language-go">type WaitGroup struct {
+    noCopy noCopy
+    state  atomic.Uint64 // 高 32 位：计数器；低 32 位：等待者数量
+    sema   uint32        // 信号量
+}</code></pre>
+
+<ul>
+  <li><strong>state</strong>：高 32 位存储计数器，低 32 位存储等待 Wait 的 goroutine 数</li>
+  <li><strong>sema</strong>：信号量，用于阻塞和唤醒等待的 goroutine</li>
+</ul>
+
+<h2>常见模式</h2>
+
+<h3>限制并发数</h3>
+
+<pre><code class="language-go">func limitedConcurrency(urls []string, maxConcurrent int) {
+    var wg sync.WaitGroup
+    sem := make(chan struct{}, maxConcurrent) // 信号量
+
+    for _, url := range urls {
+        wg.Add(1)
+        sem <- struct{}{} // 获取信号量
+
+        go func(u string) {
+            defer wg.Done()
+            defer func() { <-sem }() // 释放信号量
+
+            // 处理 URL...
+            fmt.Println("Processing:", u)
+            time.Sleep(time.Second)
+        }(url)
+    }
+
+    wg.Wait()
+}</code></pre>
+
+<h3>动态添加任务</h3>
+
+<pre><code class="language-go">func dynamicTasks() {
+    var wg sync.WaitGroup
+    tasks := make(chan int, 10)
+
+    // 启动固定数量的 worker
+    for i := 0; i < 3; i++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            for task := range tasks {
+                fmt.Printf("Worker %d processing task %d\n", id, task)
+                time.Sleep(100 * time.Millisecond)
+            }
+        }(i)
+    }
+
+    // 发送任务
+    for i := 0; i < 10; i++ {
+        tasks <- i
+    }
+    close(tasks)
+
+    wg.Wait()
+}</code></pre>
+
+<h2>总结</h2>
+
+<table>
+  <tr><th>要点</th><th>说明</th></tr>
+  <tr><td>核心作用</td><td>等待一组 goroutine 完成</td></tr>
+  <tr><td>三个方法</td><td>Add、Done、Wait</td></tr>
+  <tr><td>注意事项</td><td>Add 在 Wait 前、Done 不过量、不复制、用指针传递</td></tr>
+  <tr><td>适用场景</td><td>批量任务、并发控制、任务编排</td></tr>
+</table>

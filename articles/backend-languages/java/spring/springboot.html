@@ -1,0 +1,169 @@
+<h1>Spring Boot 入门</h1>
+
+<h2>一、Spring Boot 是什么</h2>
+<p>Spring Boot 是 Spring 的扩展，提供<strong>自动配置</strong>、<strong>起步依赖</strong>和<strong>内嵌容器</strong>，快速构建生产级应用。</p>
+
+<h2>二、快速开始</h2>
+
+<h3>1. 创建项目</h3>
+<pre><code class="language-xml"><!-- pom.xml -->
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.2.0</version>
+</parent>
+
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+</dependencies></code></pre>
+
+<h3>2. 启动类</h3>
+<pre><code class="language-java">@SpringBootApplication
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}</code></pre>
+
+<h3>3. Controller</h3>
+<pre><code class="language-java">@RestController
+public class HelloController {
+    
+    @GetMapping("/hello")
+    public String hello() {
+        return "Hello, Spring Boot!";
+    }
+}</code></pre>
+
+<h2>三、Starter 起步依赖</h2>
+
+<table>
+  <tr><th>Starter</th><th>功能</th></tr>
+  <tr><td>spring-boot-starter-web</td><td>Web 开发（MVC、Tomcat）</td></tr>
+  <tr><td>spring-boot-starter-data-jpa</td><td>JPA 数据访问</td></tr>
+  <tr><td>spring-boot-starter-jdbc</td><td>JDBC 数据库</td></tr>
+  <tr><td>spring-boot-starter-test</td><td>测试支持</td></tr>
+  <tr><td>spring-boot-starter-security</td><td>安全控制</td></tr>
+  <tr><td>spring-boot-starter-cache</td><td>缓存支持</td></tr>
+  <tr><td>spring-boot-starter-actuator</td><td>监控端点</td></tr>
+</table>
+
+<h2>四、配置管理</h2>
+
+<h3>application.properties</h3>
+<pre><code class="language-properties"># 服务器
+server.port=8080
+server.servlet.context-path=/api
+
+# 数据源
+spring.datasource.url=jdbc:mysql://localhost/test
+spring.datasource.username=root
+spring.datasource.password=123456
+
+# JPA
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+
+# 自定义
+app.name=MyApp
+app.version=1.0</code></pre>
+
+<h3>application.yml</h3>
+<pre><code class="language-yaml">server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost/test
+    username: root
+    password: 123456
+    hikari:
+      maximum-pool-size: 10
+
+app:
+  name: MyApp
+  version: 1.0</code></pre>
+
+<h3>配置绑定</h3>
+<pre><code class="language-java">@Component
+@ConfigurationProperties(prefix = "app")
+public class AppProperties {
+    private String name;
+    private String version;
+    // getters/setters
+}</code></pre>
+
+<h2>五、Profile 多环境</h2>
+
+<pre><code class="language-yaml"># application-dev.yml
+spring:
+  datasource:
+    url: jdbc:h2:mem:test
+
+# application-prod.yml
+spring:
+  datasource:
+    url: jdbc:mysql://prod-server/db
+    
+# 激活
+spring.profiles.active=dev</code></pre>
+
+<h2>六、自动配置原理</h2>
+
+<p>@SpringBootApplication = @Configuration + @EnableAutoConfiguration + @ComponentScan</p>
+
+<pre><code class="language-mermaid">graph TD
+    A[启动应用] --> B[加载 spring.factories]
+    B --> C[筛选条件配置类]
+    C --> D{@Conditional 条件}
+    D -->|匹配| E[应用自动配置]
+    D -->|不匹配| F[跳过]
+    E --> G[生成 Bean]</code></pre>
+
+<p>常用条件注解：</p>
+<ul>
+  <li>@ConditionalOnClass - 类存在</li>
+  <li>@ConditionalOnMissingBean - Bean 不存在</li>
+  <li>@ConditionalOnProperty - 配置属性</li>
+  <li>@ConditionalOnWebApplication - Web 应用</li>
+</ul>
+
+<h2>七、Actuator 监控</h2>
+
+<pre><code class="language-xml"><dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency></code></pre>
+
+<table>
+  <tr><th>端点</th><th>说明</th></tr>
+  <tr><td>/actuator/health</td><td>健康检查</td></tr>
+  <tr><td>/actuator/info</td><td>应用信息</td></tr>
+  <tr><td>/actuator/metrics</td><td>运行指标</td></tr>
+  <tr><td>/actuator/env</td><td>环境属性</td></tr>
+  <tr><td>/actuator/loggers</td><td>日志级别</td></tr>
+</table>
+
+<h2>八、打包与运行</h2>
+
+<pre><code class="language-bash"># 打包
+mvn clean package
+
+# 运行
+java -jar target/myapp-1.0.jar
+
+# 指定配置
+java -jar myapp.jar --server.port=8081 --spring.profiles.active=prod</code></pre>
+
+<h2>九、最佳实践</h2>
+<ul>
+  <li>使用 Spring Initializr 创建项目</li>
+  <li>优先用 application.yml</li>
+  <li>敏感配置用环境变量或配置中心</li>
+  <li>用 @ConfigurationProperties 组织配置</li>
+  <li>启用 Actuator 监控应用健康</li>
+  <li>用 Spring Boot DevTools 热部署</li>
+</ul>

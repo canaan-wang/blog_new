@@ -1,0 +1,94 @@
+<h1>Redis Hash</h1>
+
+<h2>一、Hash 类型简介</h2>
+
+<p>Hash 是键值对集合，适合存储对象。每个 Hash 可以存储 2^32 - 1 个键值对。</p>
+
+<pre><code class="language-mermaid">graph LR
+    A[user:1] --> B[name: Tom]
+    A --> C[age: 25]
+    A --> D[email: tom@example.com]</code></pre>
+
+<h2>二、基础命令</h2>
+
+<h3>设置与获取</h3>
+<pre><code class="language-bash">HSET user:1 name "Tom" age 25 email "tom@example.com"
+HGET user:1 name                 # 获取单个字段
+HMGET user:1 name age            # 获取多个字段
+HGETALL user:1                   # 获取所有字段
+HKEYS user:1                     # 获取所有字段名
+HVALS user:1                     # 获取所有字段值
+HLEN user:1                      # 获取字段数量</code></pre>
+
+<h3>增量操作</h3>
+<pre><code class="language-bash">HINCRBY user:1 age 1             # 字段值增加
+HINCRBYFLOAT product:1 price 1.5 # 浮点数增加</code></pre>
+
+<h3>其他操作</h3>
+<pre><code class="language-bash">HDEL user:1 age                  # 删除字段
+HEXISTS user:1 name              # 判断字段是否存在
+HSETNX user:1 name "Jerry"       # 字段不存在才设置</code></pre>
+
+<h2>三、应用场景</h2>
+
+<h3>1. 存储对象</h3>
+<pre><code class="language-java">// 存储用户信息
+Map<String, String> user = new HashMap<>();
+user.put("name", "Tom");
+user.put("age", "25");
+user.put("email", "tom@example.com");
+jedis.hset("user:1", user);
+
+// 获取用户
+Map<String, String> userInfo = jedis.hgetAll("user:1");</code></pre>
+
+<h3>2. 购物车</h3>
+<pre><code class="language-java">// 添加商品到购物车
+jedis.hset("cart:user:1", "product:1001", "2");  // 商品ID: 数量
+jedis.hset("cart:user:1", "product:1002", "1");
+
+// 获取购物车所有商品
+Map<String, String> cart = jedis.hgetAll("cart:user:1");
+
+// 增加商品数量
+jedis.hincrBy("cart:user:1", "product:1001", 1);
+
+// 删除商品
+jedis.hdel("cart:user:1", "product:1001");
+
+// 获取商品数量
+String count = jedis.hget("cart:user:1", "product:1001");</code></pre>
+
+<h3>3. 配置存储</h3>
+<pre><code class="language-bash">HSET app:config timeout 30 maxConnections 100 enableCache true
+HGET app:config timeout</code></pre>
+
+<h2>四、内部实现</h2>
+
+<p>Hash 底层使用两种数据结构：</p>
+<ul>
+  <li><strong>ziplist（压缩列表）</strong>：元素少且小时使用，节省内存</li>
+  <li><strong>hashtable（哈希表）</strong>：元素多或数据大时使用</li>
+</ul>
+
+<pre><code class="language-bash"># 转换阈值配置（redis.conf）
+hash-max-ziplist-entries 512    # 元素数量超过512转hashtable
+hash-max-ziplist-value 64       # 单个值超过64字节转hashtable</code></pre>
+
+<h2>五、与 String 存储对象对比</h2>
+
+<table>
+  <tr><th>对比</th><th>String（JSON）</th><th>Hash</th></tr>
+  <tr><td>存储空间</td><td>较大</td><td>较小（压缩列表优化）</td></tr>
+  <tr><td>字段访问</td><td>需要整个读取</td><td>可以单独获取字段</td></tr>
+  <tr><td>字段更新</td><td>需要整个重写</td><td>可以单独更新字段</td></tr>
+  <tr><td>适用场景</td><td>简单对象，读多写少</td><td>复杂对象，频繁更新字段</td></tr>
+</table>
+
+<h2>六、最佳实践</h2>
+<ul>
+  <li>对象字段较多或需要频繁更新单个字段时，优先使用 Hash</li>
+  <li>Hash 的 key 设计：业务:对象类型:id</li>
+  <li>注意单个 Hash 不要存储过多字段（建议 &lt; 1000）</li>
+  <li>利用 HINCRBY 实现原子计数</li>
+</ul>

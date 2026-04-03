@@ -1,0 +1,143 @@
+<h1>Java 泛型</h1>
+
+<h2>一、泛型简介</h2>
+<p>泛型提供编译时类型检查，避免强制类型转换，提高代码复用性。</p>
+
+<h2>二、泛型类</h2>
+
+<pre><code class="language-java">// 定义泛型类
+public class Box<T> {
+    private T content;
+    
+    public void set(T content) {
+        this.content = content;
+    }
+    
+    public T get() {
+        return content;
+    }
+}
+
+// 使用
+Box<String> stringBox = new Box<>();
+stringBox.set("Hello");
+String value = stringBox.get();  // 无需强转
+
+Box<Integer> intBox = new Box<>();
+intBox.set(123);</code></pre>
+
+<h2>三、泛型方法</h2>
+
+<pre><code class="language-java">public class Util {
+    // 泛型方法
+    public static <T> void printArray(T[] array) {
+        for (T element : array) {
+            System.out.println(element);
+        }
+    }
+    
+    // 泛型方法带返回值
+    public static <T> T getFirst(List<T> list) {
+        return list.isEmpty() ? null : list.get(0);
+    }
+    
+    // 泛型方法带约束
+    public static <T extends Comparable<T>> T max(T a, T b) {
+        return a.compareTo(b) > 0 ? a : b;
+    }
+}
+
+// 使用
+Util.printArray(new String[]{"a", "b", "c"});
+String first = Util.getFirst(Arrays.asList("a", "b"));
+Integer max = Util.max(1, 2);</code></pre>
+
+<h2>四、类型边界</h2>
+
+<pre><code class="language-java">// 上界：T 必须是 Number 或其子类
+public static <T extends Number> double sum(List<T> list) {
+    double sum = 0;
+    for (T num : list) {
+        sum += num.doubleValue();
+    }
+    return sum;
+}
+
+// 多重边界：T 必须同时实现多个接口
+public static <T extends Comparable<T> & Serializable> void sort(List<T> list) {
+    Collections.sort(list);
+}
+
+// 下界：只能写入，适合生产者
+public static void addNumbers(List<? super Integer> list) {
+    list.add(1);
+    list.add(2);
+}
+
+// 无界通配符：只读，适合消费者
+public static void printList(List<?> list) {
+    for (Object obj : list) {
+        System.out.println(obj);
+    }
+}</code></pre>
+
+<h2>五、PECS 原则</h2>
+
+<p>Producer-Extends, Consumer-Super</p>
+
+<pre><code class="language-java">// Producer（读取）用 extends
+List<? extends Number> producer = new ArrayList<Integer>();
+Number n = producer.get(0);  // 可以读
+// producer.add(1);  // 编译错误
+
+// Consumer（写入）用 super
+List<? super Integer> consumer = new ArrayList<Number>();
+consumer.add(1);  // 可以写
+// Integer i = consumer.get(0);  // 编译错误，只能作为 Object 读
+
+// 示例：拷贝方法
+public static <T> void copy(List<? extends T> src, List<? super T> dest) {
+    for (T item : src) {
+        dest.add(item);
+    }
+}</code></pre>
+
+<h2>六、类型擦除</h2>
+
+<pre><code class="language-java">// 编译前
+List<String> list = new ArrayList<>();
+list.add("hello");
+String s = list.get(0);
+
+// 编译后（类型擦除）
+List list = new ArrayList();
+list.add("hello");
+String s = (String) list.get(0);  // 自动插入强转
+
+// 运行时无法获取泛型类型
+List<String> strList = new ArrayList<>();
+List<Integer> intList = new ArrayList<>();
+System.out.println(strList.getClass() == intList.getClass());  // true</code></pre>
+
+<h2>七、泛型与数组</h2>
+
+<pre><code class="language-java">// 不能创建泛型数组
+// List<String>[] array = new List<String>[10];  // 编译错误
+
+// 变通方案1：使用 List
+List<List<String>> listOfLists = new ArrayList<>();
+
+// 变通方案2：使用 Object 数组 + 强转
+List<String>[] array = (List<String>[]) new List[10];
+
+// 变通方案3：使用反射
+List<String>[] array = (List<String>[]) Array.newInstance(List.class, 10);</code></pre>
+
+<h2>八、泛型最佳实践</h2>
+<ul>
+  <li>使用泛型消除强制类型转换</li>
+  <li>优先使用泛型方法而非泛型类</li>
+  <li>利用 PECS 提高 API 灵活性</li>
+  <li>避免混用原始类型和泛型</li>
+  <li>使用 @SafeVarargs 消除可变参数警告</li>
+</ul>

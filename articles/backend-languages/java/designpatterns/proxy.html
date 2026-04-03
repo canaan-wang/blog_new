@@ -1,0 +1,86 @@
+<h1>代理模式（Proxy）</h1>
+
+<h2>一、定义</h2>
+<p>为其他对象提供一种代理以控制对这个对象的访问。</p>
+
+<h2>二、静态代理</h2>
+<pre><code class="language-java">// 接口
+public interface Image {
+    void display();
+}
+
+// 真实对象
+public class RealImage implements Image {
+    private String filename;
+    
+    public void display() {
+        System.out.println("Displaying " + filename);
+    }
+}
+
+// 代理
+public class ProxyImage implements Image {
+    private RealImage realImage;
+    private String filename;
+    
+    public void display() {
+        if (realImage == null) {
+            realImage = new RealImage(filename);  // 延迟加载
+        }
+        realImage.display();
+    }
+}</code></pre>
+
+<h2>三、JDK 动态代理</h2>
+<pre><code class="language-java">import java.lang.reflect.Proxy;
+
+public class JdkProxyFactory {
+    public static Object createProxy(Object target) {
+        return Proxy.newProxyInstance(
+            target.getClass().getClassLoader(),
+            target.getClass().getInterfaces(),
+            (proxy, method, args) -> {
+                System.out.println("Before");
+                Object result = method.invoke(target, args);
+                System.out.println("After");
+                return result;
+            }
+        );
+    }
+}</code></pre>
+
+<h2>四、CGLIB 代理</h2>
+<pre><code class="language-java">import net.sf.cglib.proxy.Enhancer;
+
+public class CglibProxy implements MethodInterceptor {
+    public Object createProxy(Class<?> targetClass) {
+        Enhancer enhancer = new Enhancer();
+        enhancer.setSuperclass(targetClass);
+        enhancer.setCallback(this);
+        return enhancer.create();
+    }
+    
+    public Object intercept(Object obj, Method method, 
+                          Object[] args, MethodProxy proxy) {
+        System.out.println("Before");
+        Object result = proxy.invokeSuper(obj, args);
+        System.out.println("After");
+        return result;
+    }
+}</code></pre>
+
+<h2>五、代理类型</h2>
+<table>
+  <tr><th>类型</th><th>用途</th></tr>
+  <tr><td>远程代理</td><td>RPC 调用</td></tr>
+  <tr><td>虚拟代理</td><td>延迟加载</td></tr>
+  <tr><td>保护代理</td><td>权限控制</td></tr>
+  <tr><td>智能引用</td><td>计数、缓存</td></tr>
+</table>
+
+<h2>六、应用场景</h2>
+<ul>
+  <li>Spring AOP</li>
+  <li>MyBatis Mapper</li>
+  <li>RPC 框架</li>
+</ul>

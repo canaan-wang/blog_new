@@ -1,0 +1,114 @@
+<h1>Java ConcurrentHashMap</h1>
+
+<h2>一、ConcurrentHashMap 简介</h2>
+
+<p>线程安全的 HashMap 实现，JDK 1.8 使用 CAS + synchronized，比 Hashtable 和 Collections.synchronizedMap 性能更高。</p>
+
+<h2>二、JDK 1.7 vs 1.8</h2>
+
+<table>
+  <tr><th>版本</th><th>实现</th><th>锁机制</th></tr>
+  <tr><td>JDK 1.7</td><td>分段数组（Segment）</td><td>每个 Segment 独立加锁</td></tr>
+  <tr><td>JDK 1.8</td><td>数组 + 链表/红黑树</td><td>CAS + synchronized（桶级别）</td></tr>
+</table>
+
+<h2>三、JDK 1.8 结构</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A[Node数组] --> B[桶0: null]
+    A --> C[桶1: Node链表]
+    A --> D[桶2: TreeBin红黑树]
+    A --> E[桶3: Node]
+    
+    C --> C1[Node] --> C2[Node]
+    
+    style D fill:#f99
+    style C fill:#9f9</code></pre>
+
+<h2>四、核心机制</h2>
+
+<h3>put 流程</h3>
+<ol>
+  <li>计算 hash，定位桶索引</li>
+  <li>桶为空：CAS 插入新节点</li>
+  <li>桶有值：synchronized 锁定桶头节点
+    <ul>
+      <li>链表：遍历插入或覆盖</li>
+      <li>红黑树：按树规则插入</li>
+    </ul>
+  </li>
+  <li>检查是否需要扩容或树化</li>
+</ol>
+
+<h3>get 流程</h3>
+<ol>
+  <li>计算 hash，定位桶</li>
+  <li>桶头节点就是要找的：直接返回</li>
+  <li>遍历链表或红黑树查找</li>
+</ol>
+
+<p>注意：get 不需要加锁，利用 volatile 保证可见性。</p>
+
+<h2>五、常用操作</h2>
+
+<pre><code class="language-java">ConcurrentHashMap<String, Integer> map = new ConcurrentHashMap<>();
+
+// 添加
+map.put("key", 1);
+map.putIfAbsent("key", 2);  // key 不存在才添加
+
+// 计算并添加
+map.compute("key", (k, v) -> v == null ? 1 : v + 1);
+map.computeIfAbsent("key2", k -> 100);
+map.computeIfPresent("key", (k, v) -> v + 1);
+
+// 合并
+map.merge("key", 1, Integer::sum); // 存在则累加，不存在设为1
+
+// 批量操作
+map.forEach(3, (k, v) -> System.out.println(k + "=" + v)); // 并行度3
+
+// 搜索
+String result = map.search(3, (k, v) -> v > 10 ? k : null);
+
+// 归约
+long sum = map.reduceValuesToLong(3, v -> v, 0, Long::sum);</code></pre>
+
+<h2>六、与 Hashtable/Collections.synchronizedMap 对比</h2>
+
+<table>
+  <tr><th>特性</th><th>ConcurrentHashMap</th><th>Hashtable</th><th>synchronizedMap</th></tr>
+  <tr><td>锁粒度</td><td>桶级别</td><td>全表锁</td><td>全表锁</td></tr>
+  <tr><td>读性能</td><td>高（无锁）</td><td>低</td><td>低</td></tr>
+  <tr><td>写性能</td><td>高</td><td>低</td><td>低</td></tr>
+  <tr><td>null 支持</td><td>不允许</td><td>不允许</td><td>允许</td></tr>
+</table>
+
+<h2>七、size 计算</h2>
+
+<p>JDK 1.8 使用 CounterCell 数组分散计数，减少竞争：</p>
+
+<pre><code class="language-java">@sun.misc.Contended
+static final class CounterCell {
+    volatile long value;
+    CounterCell(long x) { value = x; }
+}
+
+// 最终 size 是所有 CounterCell 值 + baseCount 的和</code></pre>
+
+<h2>八、扩容机制</h2>
+
+<p>支持多线程协助扩容：</p>
+<ul>
+  <li>一个线程触发扩容</li>
+  <li>其他线程检测到正在扩容，帮助迁移数据</li>
+  <li>使用 sizeCtl 控制并发</li>
+</ul>
+
+<h2>九、最佳实践</h2>
+<ul>
+  <li>多线程环境首选 ConcurrentHashMap</li>
+  <li>单线程环境用 HashMap 性能更好</li>
+  <li>使用 compute/merge 方法原子更新</li>
+  <li>批量操作使用 forEach、search、reduce 系列方法</li>
+</ul>

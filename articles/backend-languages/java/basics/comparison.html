@@ -1,0 +1,121 @@
+<h1>Java 判断与比较</h1>
+
+<h2>一、== 与 equals 的区别</h2>
+
+<table>
+  <tr><th>比较方式</th><th>比较内容</th><th>适用类型</th></tr>
+  <tr><td>==</td><td>引用地址（基本类型比较值）</td><td>基本类型、引用类型</td></tr>
+  <tr><td>equals</td><td>对象内容</td><td>引用类型（需正确重写）</td></tr>
+</table>
+
+<pre><code class="language-java">// 基本类型
+int a = 10, b = 10;
+a == b; // true
+
+// 引用类型
+String s1 = new String("a");
+String s2 = new String("a");
+s1 == s2;      // false，不同对象
+s1.equals(s2); // true，内容相同</code></pre>
+
+<h2>二、equals 与 hashCode 约定</h2>
+
+<ul>
+  <li>equals 相等 → hashCode 必须相等</li>
+  <li>hashCode 相等 → equals 不一定相等（哈希冲突）</li>
+</ul>
+
+<pre><code class="language-java">// 正确重写示例
+public class User {
+    private Long id;
+    private String name;
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        User user = (User) o;
+        return Objects.equals(id, user.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}</code></pre>
+
+<h2>三、compareTo 比较</h2>
+
+<p>实现 Comparable 接口，定义自然排序：</p>
+
+<pre><code class="language-java">public class Student implements Comparable<Student> {
+    private int score;
+    
+    @Override
+    public int compareTo(Student other) {
+        return this.score - other.score; // 升序
+        // return other.score - this.score; // 降序
+    }
+}
+
+// 使用
+Student s1 = new Student(90);
+Student s2 = new Student(80);
+s1.compareTo(s2); // 正数，表示 s1 > s2</code></pre>
+
+<h2>四、Comparator 定制比较</h2>
+
+<pre><code class="language-java">// Lambda 方式
+Comparator<Student> byScore = (s1, s2) -> s1.getScore() - s2.getScore();
+
+// 方法引用
+Comparator<Student> byName = Comparator.comparing(Student::getName);
+
+// 链式比较
+Comparator<Student> byScoreThenName = Comparator
+    .comparing(Student::getScore)
+    .thenComparing(Student::getName)
+    .reversed(); // 反转</code></pre>
+
+<h2>五、Objects 工具类</h2>
+
+<pre><code class="language-java">// 判空比较（避免 NPE）
+Objects.equals(a, b);     // 安全 equals
+Objects.isNull(obj);      // 是否为 null
+Objects.nonNull(obj);     // 是否非 null
+Objects.requireNonNull(obj, "不能为空"); // 检查非空</code></pre>
+
+<h2>六、switch 比较（Java 14+）</h2>
+
+<pre><code class="language-java">// 传统 switch
+switch (day) {
+    case MONDAY:
+    case FRIDAY:
+        System.out.println(" busy");
+        break;
+    default:
+        System.out.println(" free");
+}
+
+// Java 14+ switch 表达式
+String result = switch (day) {
+    case MONDAY, FRIDAY -> "busy";
+    case TUESDAY        -> "meeting";
+    default             -> "free";
+};
+
+// 带 yield 的代码块
+int result = switch (score) {
+    case 90, 100 -> { yield 5; }
+    case 80      -> { yield 4; }
+    default      -> { yield 3; }
+};</code></pre>
+
+<h2>七、最佳实践</h2>
+<ul>
+  <li>引用类型比较内容用 equals，不用 ==</li>
+  <li>常量放 equals 前面，避免 NPE：<code>"expected".equals(variable)</code></li>
+  <li>重写 equals 必须重写 hashCode</li>
+  <li>使用 Objects.equals 进行安全比较</li>
+  <li>Java 8+ 优先使用 Comparator 链式 API</li>
+</ul>

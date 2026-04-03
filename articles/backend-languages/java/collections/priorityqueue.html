@@ -1,0 +1,148 @@
+<h1>Java PriorityQueue</h1>
+
+<h2>一、简介</h2>
+<p>PriorityQueue 是基于堆实现的优先队列，保证队首是最小（或最大）元素。</p>
+
+<h2>二、类继承关系</h2>
+
+<pre><code class="language-mermaid">graph TD
+    Queue --> PriorityQueue
+    AbstractQueue --> PriorityQueue</code></pre>
+
+<h2>三、基本用法</h2>
+
+<pre><code class="language-java">import java.util.PriorityQueue;
+
+// 自然排序（最小堆）
+PriorityQueue<Integer> pq = new PriorityQueue<>();
+pq.offer(5);
+pq.offer(1);
+pq.offer(3);
+System.out.println(pq.poll());  // 1
+System.out.println(pq.poll());  // 3
+
+// 自定义比较器（最大堆）
+PriorityQueue<Integer> maxHeap = new PriorityQueue<>((a, b) -> b - a);
+maxHeap.offer(1);
+maxHeap.offer(5);
+maxHeap.offer(3);
+System.out.println(maxHeap.poll());  // 5</code></pre>
+
+<h2>四、核心方法</h2>
+
+<table>
+  <tr><th>方法</th><th>说明</th><th>失败时</th></tr>
+  <tr><td>offer(E)</td><td>添加元素</td><td>返回 false</td></tr>
+  <tr><td>add(E)</td><td>添加元素</td><td>抛出异常</td></tr>
+  <tr><td>poll()</td><td>移除并返回队首</td><td>返回 null</td></tr>
+  <tr><td>remove()</td><td>移除并返回队首</td><td>抛出异常</td></tr>
+  <tr><td>peek()</td><td>查看队首</td><td>返回 null</td></tr>
+  <tr><td>element()</td><td>查看队首</td><td>抛出异常</td></tr>
+</table>
+
+<h2>五、自定义对象</h2>
+
+<pre><code class="language-java">class Task implements Comparable<Task> {
+    int priority;
+    String name;
+    
+    public Task(int priority, String name) {
+        this.priority = priority;
+        this.name = name;
+    }
+    
+    @Override
+    public int compareTo(Task other) {
+        return this.priority - other.priority;
+    }
+}
+
+PriorityQueue<Task> taskQueue = new PriorityQueue<>();
+taskQueue.offer(new Task(3, "Low"));
+taskQueue.offer(new Task(1, "High"));
+taskQueue.offer(new Task(2, "Medium"));
+
+Task task = taskQueue.poll();
+System.out.println(task.name);  // High</code></pre>
+
+<h2>六、应用场景</h2>
+
+<h3>Top K 问题</h3>
+<pre><code class="language-java">// 找数组中最大的 K 个数
+public List<Integer> topK(int[] nums, int k) {
+    PriorityQueue<Integer> minHeap = new PriorityQueue<>(k);
+    
+    for (int num : nums) {
+        if (minHeap.size() < k) {
+            minHeap.offer(num);
+        } else if (num > minHeap.peek()) {
+            minHeap.poll();
+            minHeap.offer(num);
+        }
+    }
+    
+    return new ArrayList<>(minHeap);
+}</code></pre>
+
+<h3>合并 K 个有序数组</h3>
+<pre><code class="language-java">public List<Integer> mergeKLists(List<List<Integer>> lists) {
+    PriorityQueue<int[]> pq = new PriorityQueue<>(Comparator.comparingInt(a -> a[0]));
+    List<Integer> result = new ArrayList<>();
+    
+    // 初始化：每个数组的第一个元素
+    for (int i = 0; i < lists.size(); i++) {
+        if (!lists.get(i).isEmpty()) {
+            pq.offer(new int[]{lists.get(i).get(0), i, 0});
+        }
+    }
+    
+    while (!pq.isEmpty()) {
+        int[] curr = pq.poll();
+        result.add(curr[0]);
+        
+        int listIdx = curr[1], elemIdx = curr[2];
+        if (elemIdx + 1 < lists.get(listIdx).size()) {
+            pq.offer(new int[]{
+                lists.get(listIdx).get(elemIdx + 1), 
+                listIdx, elemIdx + 1
+            });
+        }
+    }
+    
+    return result;
+}</code></pre>
+
+<h3>任务调度</h3>
+<pre><code class="language-java">// 延迟任务队列
+PriorityQueue<DelayedTask> delayQueue = new PriorityQueue<>(
+    Comparator.comparingLong(t -> t.executeTime)
+);
+
+delayQueue.offer(new DelayedTask("Task1", System.currentTimeMillis() + 5000));
+delayQueue.offer(new DelayedTask("Task2", System.currentTimeMillis() + 3000));
+
+// 检查并执行到期任务
+while (!delayQueue.isEmpty() && 
+       delayQueue.peek().executeTime <= System.currentTimeMillis()) {
+    DelayedTask task = delayQueue.poll();
+    task.execute();
+}</code></pre>
+
+<h2>七、PriorityQueue vs TreeSet</h2>
+
+<table>
+  <tr><th>特性</th><th>PriorityQueue</th><th>TreeSet</th></tr>
+  <tr><td>重复元素</td><td>允许</td><td>不允许</td></tr>
+  <tr><td>遍历顺序</td><td>无序</td><td>有序</td></tr>
+  <tr><td>取极值</td><td>O(1) 取队首</td><td>O(1) first/last</td></tr>
+  <tr><td>查找任意元素</td><td>O(n)</td><td>O(log n)</td></tr>
+  <tr><td>适用场景</td><td>只需极值</td><td>需要有序集合</td></tr>
+</table>
+
+<h2>八、注意事项</h2>
+<ul>
+  <li>非线程安全，多线程需用 PriorityBlockingQueue</li>
+  <li>不支持 null 元素</li>
+  <li>迭代器不保证有序</li>
+  <li>优先用 offer/poll/peek 而非 add/remove/element</li>
+</ul>

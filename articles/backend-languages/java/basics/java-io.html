@@ -1,0 +1,120 @@
+<h1>Java IO/NIO</h1>
+
+<h2>一、IO 分类</h2>
+
+<pre><code class="language-mermaid">graph TD
+    IO[Java IO] --> BIO[阻塞 IO]
+    IO --> NIO[非阻塞 NIO]
+    IO --> AIO[异步 AIO]
+    
+    BIO --> Stream[字节流/字符流]
+    NIO --> Channel[Channel]
+    NIO --> Buffer[Buffer]
+    NIO --> Selector[Selector]</code></pre>
+
+<h2>二、字节流 vs 字符流</h2>
+
+<table>
+  <tr><th>类型</th><th>抽象类</th><th>用途</th></tr>
+  <tr><td>字节流</td><td>InputStream/OutputStream</td><td>二进制数据</td></tr>
+  <tr><td>字符流</td><td>Reader/Writer</td><td>文本数据</td></tr>
+</table>
+
+<h2>三、常用 IO 类</h2>
+
+<pre><code class="language-java">// 文件读写
+try (FileInputStream fis = new FileInputStream("input.txt");
+     FileOutputStream fos = new FileOutputStream("output.txt")) {
+    byte[] buffer = new byte[1024];
+    int len;
+    while ((len = fis.read(buffer)) != -1) {
+        fos.write(buffer, 0, len);
+    }
+}
+
+// 字符流 + 缓冲
+try (BufferedReader reader = new BufferedReader(
+        new FileReader("input.txt"));
+     BufferedWriter writer = new BufferedWriter(
+        new FileWriter("output.txt"))) {
+    String line;
+    while ((line = reader.readLine()) != null) {
+        writer.write(line);
+        writer.newLine();
+    }
+}
+
+// Java 7+ Files 工具类
+byte[] bytes = Files.readAllBytes(Paths.get("file.txt"));
+List<String> lines = Files.readAllLines(Paths.get("file.txt"));
+Files.write(Paths.get("output.txt"), lines);</code></pre>
+
+<h2>四、NIO 核心组件</h2>
+
+<pre><code class="language-java">// Buffer
+ByteBuffer buffer = ByteBuffer.allocate(1024);
+buffer.put("Hello".getBytes());
+buffer.flip();  // 切换到读模式
+while (buffer.hasRemaining()) {
+    System.out.print((char) buffer.get());
+}
+buffer.clear(); // 切换到写模式
+
+// Channel
+try (FileChannel channel = FileChannel.open(
+        Paths.get("file.txt"), StandardOpenOption.READ)) {
+    ByteBuffer buf = ByteBuffer.allocate(1024);
+    channel.read(buf);
+}
+
+// Selector 多路复用
+Selector selector = Selector.open();
+ServerSocketChannel serverChannel = ServerSocketChannel.open();
+serverChannel.bind(new InetSocketAddress(8080));
+serverChannel.configureBlocking(false);
+serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+while (true) {
+    selector.select();
+    Set<SelectionKey> keys = selector.selectedKeys();
+    Iterator<SelectionKey> it = keys.iterator();
+    while (it.hasNext()) {
+        SelectionKey key = it.next();
+        if (key.isAcceptable()) {
+            // 处理连接
+        } else if (key.isReadable()) {
+            // 处理读取
+        }
+        it.remove();
+    }
+}</code></pre>
+
+<h2>五、IO vs NIO</h2>
+
+<table>
+  <tr><th>特性</th><th>IO</th><th>NIO</th></tr>
+  <tr><td>模式</td><td>阻塞</td><td>非阻塞</td></tr>
+  <tr><td>数据单位</td><td>字节/字符</td><td>Buffer</td></tr>
+  <tr><td>传输</td><td>Stream</td><td>Channel</td></tr>
+  <tr><td>并发</td><td>多线程</td><td>Selector 单线程</td></tr>
+  <tr><td>适用</td><td>连接少、数据量大</td><td>连接多、数据量小</td></tr>
+</table>
+
+<h2>六、Path 和 Files（Java 7+）</h2>
+
+<pre><code class="language-java">Path path = Paths.get("/home/user/file.txt");
+Path absolute = path.toAbsolutePath();
+Path parent = path.getParent();
+
+// 文件操作
+Files.exists(path);
+Files.createFile(path);
+Files.createDirectory(path);
+Files.delete(path);
+Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+Files.move(source, target);
+
+// 遍历目录
+Files.walk(Paths.get("/home"))
+    .filter(Files::isRegularFile)
+    .forEach(System.out::println);</code></pre>

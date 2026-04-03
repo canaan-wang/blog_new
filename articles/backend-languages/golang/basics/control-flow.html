@@ -1,0 +1,366 @@
+<h1>控制流</h1>
+
+<h2>一、控制流基础认知</h2>
+
+<h3>1.1 什么是控制流？</h3>
+<p>控制流是程序执行时语句的执行顺序，Go语言通过<strong>分支结构</strong>（选择执行）、<strong>循环结构</strong>（重复执行）、<strong>跳转结构</strong>（强制改变执行顺序）三大类控制流语句，实现程序逻辑的灵活控制。</p>
+
+<h3>1.2 核心作用</h3>
+<ul>
+  <li><strong>逻辑分支</strong>：根据条件执行不同代码块（如判断用户登录状态后执行不同操作）</li>
+  <li><strong>重复执行</strong>：批量处理数据或重复任务（如遍历切片、读取文件内容）</li>
+  <li><strong>流程跳转</strong>：特殊场景下调整执行顺序（如提前退出循环、处理错误后终止函数）</li>
+</ul>
+
+<h2>二、分支控制流（选择执行）</h2>
+<p>分支结构根据条件判断选择执行的代码块，Go语言支持<code>if-else</code>、<code>switch</code>两种核心分支语句，无三元运算符（需用if-else替代）。</p>
+
+<h3>2.1 if-else 语句</h3>
+<p>最基础的分支语句，根据单个或多个条件依次判断，执行对应代码块，支持条件初始化语句。</p>
+
+<h4>2.1.1 基础用法</h4>
+<pre><code class="language-go">func main() {
+    score := 85
+    // 基础if-else
+    if score >= 60 {
+        fmt.Println("成绩合格")
+    } else {
+        fmt.Println("成绩不合格")
+    }
+
+    // 多条件if-else if-else
+    if score >= 90 {
+        fmt.Println("优秀")
+    } else if score >= 80 {
+        fmt.Println("良好")
+    } else if score >= 60 {
+        fmt.Println("及格")
+    } else {
+        fmt.Println("不及格")
+    }
+}</code></pre>
+
+<h4>2.1.2 带初始化的if语句（推荐）</h4>
+<p>if后可添加初始化语句，声明的变量仅在if-else代码块内有效，简化代码且限定变量作用域。</p>
+
+<pre><code class="language-go">func main() {
+    // 初始化语句：score := 85，仅在if-else内有效
+    if score := 85; score >= 60 {
+        fmt.Printf("分数：%d，合格", score)
+    } else {
+        fmt.Printf("分数：%d，不合格", score)
+    }
+    // fmt.Println(score) // 编译报错：score未定义（作用域仅限if-else内）
+}</code></pre>
+
+<p>if语句注意：条件表达式无需用括号包裹（Go语法简化），代码块必须用大括号<code>{}</code>包裹，即使只有一行代码。</p>
+
+<h3>2.2 switch 语句</h3>
+<p>用于多值匹配场景，相比多重if-else更简洁，Go的switch支持任意类型匹配，且默认自带<code>break</code>（匹配成功后自动终止，无需手动添加）。</p>
+
+<h4>2.2.1 基础值匹配</h4>
+<pre><code class="language-go">func main() {
+    day := 3
+    // 基础switch：匹配day的值
+    switch day {
+    case 1:
+        fmt.Println("星期一")
+    case 2:
+        fmt.Println("星期二")
+    case 3:
+        fmt.Println("星期三")
+    default: // 所有case不匹配时执行
+        fmt.Println("未知星期")
+    }
+}</code></pre>
+
+<h4>2.2.2 多值匹配与穿透</h4>
+<p>单个case可匹配多个值（用逗号分隔），通过<code>fallthrough</code>关键字实现"穿透"（执行当前case后继续执行下一个case）。</p>
+
+<pre><code class="language-go">func main() {
+    score := 85
+    switch { // 无表达式，类似if-else if
+    case score >= 90:
+        fmt.Println("优秀")
+    case score >= 80, score >= 70: // 多值匹配（80-89或70-79均匹配）
+        fmt.Println("良好")
+        fallthrough // 穿透到下一个case
+    case score >= 60:
+        fmt.Println("及格")
+    default:
+        fmt.Println("不及格")
+    }
+    // 输出：良好 及格（因fallthrough穿透）
+}</code></pre>
+
+<h4>2.2.3 带初始化的switch</h4>
+<p>switch后可添加初始化语句，声明的变量仅在switch代码块内有效。</p>
+
+<pre><code class="language-go">func main() {
+    // 初始化语句：age := 25，仅在switch内有效
+    switch age := 25; age {
+    case 18:
+        fmt.Println("成年")
+    case 25:
+        fmt.Println("青年")
+    case 60:
+        fmt.Println("老年")
+    }
+}</code></pre>
+
+<p>switch注意：case值必须唯一且与switch表达式类型一致；无表达式的switch可替代多重if-else，更灵活。</p>
+
+<h2>三、循环控制流（重复执行）</h2>
+<p>Go语言仅支持<code>for</code>一种循环语句，通过不同语法变形实现传统循环、范围循环等场景，功能覆盖其他语言的<code>for</code>、<code>while</code>、<code>do-while</code>。</p>
+
+<h3>3.1 基础for循环（传统循环）</h3>
+<p>语法：<code>for 初始化语句; 条件表达式; 后置语句 { 循环体 }</code>，初始化语句和后置语句可省略。</p>
+
+<pre><code class="language-go">func main() {
+    // 基础传统循环：打印1-5
+    for i := 1; i <= 5; i++ {
+        fmt.Println(i)
+    }
+
+    // 省略初始化语句（需提前声明变量）
+    j := 1
+    for ; j <= 5; j++ {
+        fmt.Println(j)
+    }
+
+    // 省略初始化和后置语句（类似while循环）
+    k := 1
+    for k <= 5 {
+        fmt.Println(k)
+        k++
+    }
+}</code></pre>
+
+<h3>3.2 无限循环</h3>
+<p>省略所有表达式的<code>for</code>即为无限循环，需在循环体内通过<code>break</code>手动终止，避免死循环。</p>
+
+<pre><code class="language-go">func main() {
+    count := 0
+    // 无限循环
+    for {
+        count++
+        fmt.Println("循环次数：", count)
+        // 条件满足时终止循环
+        if count >= 5 {
+            break // 终止循环
+        }
+    }
+}</code></pre>
+
+<h3>3.3 for range 循环（范围循环）</h3>
+<p>专门用于遍历切片、映射、字符串、通道等聚合类型，自动迭代元素，语法：<code>for 索引, 值 := range 聚合类型 { 循环体 }</code>，可通过<code>_</code>忽略索引或值。</p>
+
+<p><strong>关键注意</strong>：for range遍历期间，对切片直接添加/删除元素可能导致遍历不完整或重复；对映射添加元素可正常遍历，但删除需谨慎。</p>
+
+<pre><code class="language-go">func main() {
+    // 1. 遍历切片
+    nums := []int{10, 20, 30}
+    for idx, val := range nums {
+        fmt.Printf("索引：%d，值：%d\n", idx, val)
+    }
+
+    // 2. 遍历映射（键值对）
+    user := map[string]string{
+        "name": "张三",
+        "age":  "28",
+    }
+    // 遍历键值对，忽略索引
+    for key, val := range user {
+        fmt.Printf("键：%s，值：%s\n", key, val)
+    }
+
+    // 3. 遍历字符串（按字符遍历，含中文）
+    str := "Hello 世界"
+    for idx, char := range str {
+        fmt.Printf("索引：%d，字符：%c\n", idx, char)
+    }
+
+    // 4. 忽略索引或值
+    for _, val := range nums { // 忽略索引
+        fmt.Println("切片值：", val)
+    }
+    for key := range user { // 忽略值（仅遍历键）
+        fmt.Println("映射键：", key)
+    }
+}</code></pre>
+
+<p>for range注意：</p>
+<ul>
+  <li>① 遍历字符串时，索引是字节索引，中文等Unicode字符占3个字节，range会自动识别字符边界；</li>
+  <li>② 遍历映射时，键的顺序是随机的，添加元素可正常遍历，但<strong>删除当前正在遍历的键需谨慎</strong>：Go 1.2及以上版本虽支持遍历中删除键，但可能导致该键后续不会被再次遍历（符合预期），但删除非当前遍历键可能引发迭代器不稳定，极端场景下出现重复或遗漏遍历。</li>
+  <li>③ 遍历切片时，<strong>直接增删元素会导致遍历异常</strong>（range初始化时已确定遍历长度，新增元素不会被遍历，删除元素可能导致重复遍历）</li>
+</ul>
+
+<h2>四、跳转控制流（强制改变顺序）</h2>
+<p>通过<code>break</code>、<code>continue</code>、<code>goto</code>关键字强制改变执行顺序，其中<code>goto</code>需谨慎使用（易导致代码逻辑混乱）。</p>
+
+<h3>4.1 break 语句</h3>
+<p>用于终止当前循环（for）或开关（switch）语句，跳出后执行后续代码；可结合标签使用，终止指定标签的循环。</p>
+
+<pre><code class="language-go">func main() {
+    // 1. 终止普通循环
+    for i := 1; i <= 5; i++ {
+        if i == 3 {
+            break // 当i=3时终止循环
+        }
+        fmt.Println(i) // 输出：1 2
+    }
+
+    // 2. 结合标签终止外层循环
+    outer: // 外层循环标签
+    for i := 1; i <= 3; i++ {
+        for j := 1; j <= 3; j++ {
+            if j == 2 {
+                break outer // 终止标签为outer的外层循环
+            }
+            fmt.Printf("i=%d, j=%d\n", i, j) // 仅输出i=1, j=1
+        }
+    }
+}</code></pre>
+
+<h3>4.2 continue 语句</h3>
+<p>用于跳过当前循环的剩余部分，直接开始下一次循环；可结合标签使用，跳过指定标签循环的当前迭代。</p>
+
+<pre><code class="language-go">func main() {
+    // 1. 跳过当前循环剩余部分
+    for i := 1; i <= 5; i++ {
+        if i == 3 {
+            continue // 跳过i=3的循环体剩余部分，直接开始下一次循环
+        }
+        fmt.Println(i) // 输出：1 2 4 5
+    }
+
+    // 2. 结合标签跳过外层循环当前迭代
+    outer:
+    for i := 1; i <= 3; i++ {
+        for j := 1; j <= 3; j++ {
+            if j == 2 {
+                continue outer // 跳过外层循环当前迭代，i直接+1
+            }
+            fmt.Printf("i=%d, j=%d\n", i, j) // 输出i=1,j=1; i=2,j=1; i=3,j=1
+        }
+    }
+}</code></pre>
+
+<h3>4.3 goto 语句</h3>
+<p>用于跳转到当前函数内的指定标签位置，语法：<code>goto 标签名</code>，仅推荐在简化多层嵌套退出场景使用（如函数内多个地方需要退出时）。</p>
+
+<pre><code class="language-go">func main() {
+    count := 0
+    for {
+        count++
+        if count == 3 {
+            goto end // 跳转到end标签位置
+        }
+        fmt.Println("计数：", count) // 输出：1 2
+    }
+end: // 标签
+    fmt.Println("循环结束")
+}</code></pre>
+
+<p>goto注意：禁止滥用goto导致代码逻辑"跳跃混乱"，仅在简化多层循环退出或统一错误处理出口时使用，避免跨函数、跨代码块跳转。</p>
+
+<h2>五、特殊控制场景</h2>
+
+<h3>5.1 多层循环控制</h3>
+<p>多层循环中，通过标签结合<code>break</code>/<code>continue</code>精准控制外层循环，避免嵌套过深导致的逻辑混乱。</p>
+
+<pre><code class="language-go">func main() {
+    // 标签控制多层循环
+    outerLoop:
+    for i := 1; i <= 3; i++ {
+        innerLoop:
+        for j := 1; j <= 3; j++ {
+            if i == 2 && j == 2 {
+                break innerLoop // 仅终止内层循环
+            }
+            if i == 3 {
+                break outerLoop // 终止外层循环
+            }
+            fmt.Printf("i=%d, j=%d\n", i, j)
+        }
+    }
+}</code></pre>
+
+<h3>5.2 循环与错误处理结合</h3>
+<p>循环中结合条件判断和<code>break</code>，处理重试、超时等场景，增强程序健壮性。</p>
+
+<pre><code class="language-go">import "time"
+
+func doTask() (bool, error) {
+    // 模拟任务执行，随机返回成功或失败
+    if time.Now().Unix()%2 == 0 {
+        return true, nil
+    }
+    return false, fmt.Errorf("任务执行失败")
+}
+
+func main() {
+    maxRetry := 3 // 最大重试次数
+    retryCount := 0
+    for {
+        success, err := doTask()
+        if success {
+            fmt.Println("任务执行成功")
+            break
+        }
+        retryCount++
+        fmt.Printf("第%d次重试，错误：%v\n", retryCount, err)
+        if retryCount >= maxRetry {
+            fmt.Println("超过最大重试次数，任务失败")
+            break
+        }
+        time.Sleep(1 * time.Second) // 重试间隔
+    }
+}</code></pre>
+
+<h2>六、实践规范</h2>
+
+<h3>6.1 分支语句规范</h3>
+<ul>
+  <li><strong>if-else 简化</strong>：单个条件且逻辑简单时，可写为一行（如<code>if err != nil { return err }</code>），但复杂逻辑需换行</li>
+  <li><strong>switch 优先</strong>：多值匹配场景优先用switch，避免多重if-else（如超过3个条件）</li>
+  <li><strong>default 必加</strong>：switch语句必须添加default分支，处理异常情况（即使默认无逻辑也需加<code>default: ;</code>）</li>
+</ul>
+
+<h3>6.2 循环语句规范</h3>
+<ul>
+  <li><strong>for range 优先</strong>：遍历切片、映射、字符串时，优先用for range（比传统for更简洁，且避免索引越界）</li>
+  <li><strong>无限循环控制</strong>：无限循环必须包含明确的终止条件（break），并添加注释说明终止逻辑</li>
+  <li><strong>循环变量作用域</strong>：for循环初始化语句中声明的变量，避免在循环外引用（作用域清晰）</li>
+  <li><strong>循环体精简</strong>：循环体逻辑复杂时，提取为独立函数（如<code>for _, item := range list { processItem(item) }</code>）</li>
+</ul>
+
+<h3>6.3 跳转语句规范</h3>
+<ul>
+  <li><strong>break/continue 明确</strong>：多层循环中使用break/continue时，优先结合标签（增强可读性）</li>
+  <li><strong>goto 限制使用</strong>：仅允许在函数内统一退出场景使用goto，禁止用于实现复杂逻辑跳转</li>
+  <li><strong>避免深度嵌套</strong>：跳转语句可用于减少循环或分支的嵌套层数（如嵌套超过3层时，用break+标签简化）</li>
+</ul>
+
+<h2>七、常见问题自查</h2>
+
+<ol>
+  <li><strong>Q：Go语言为何没有while和do-while循环？</strong><br>
+  A：Go的for循环通过省略表达式可实现while（<code>for 条件 {}</code>）和do-while（<code>for { ... if 条件 break }</code>）的功能，统一语法减少学习成本</li>
+  
+  <li><strong>Q：for range遍历字符串时，索引为何不是连续的？</strong><br>
+  A：Go中字符串默认是UTF-8编码，中文等字符占3个字节，range会按字符迭代，索引对应字节位置，因此非ASCII字符的索引不连续</li>
+  
+  <li><strong>Q：switch语句中case的顺序会影响执行结果吗？</strong><br>
+  A：会，switch按case声明顺序依次匹配，匹配成功后默认终止（除非加fallthrough），需将范围小的case放前面</li>
+  
+  <li><strong>Q：break语句在多层循环中会终止所有循环吗？</strong><br>
+  A：不会，默认仅终止当前所在的循环；需终止外层循环时，需给外层循环加标签，用<code>break 标签名</code></li>
+  
+  <li><strong>Q：for range遍历切片时，修改循环变量的值会影响原切片吗？遍历期间能直接添加/删除元素吗？</strong><br>
+  A：① 修改循环变量不会影响原切片，因循环变量的值是元素副本，需通过索引操作（<code>nums[idx] = newVal</code>）修改原切片；② 遍历期间<strong>不建议直接增删原切片</strong>：range初始化时已确定遍历长度，新增元素不会被遍历，删除元素可能导致重复或跳过遍历；正确做法是遍历切片副本，操作原切片</li>
+  
+  <li><strong>Q：goto语句为何不推荐频繁使用？</strong><br>
+  A：goto会破坏程序的顺序执行逻辑，导致代码可读性降低、调试困难，易出现逻辑漏洞（如跳过变量初始化）</li>
+</ol>

@@ -1,0 +1,197 @@
+<h1>Go sync.Map 详解</h1>
+
+<p><code>sync.Map</code> 是 Go 1.9 引入的并发安全 map，专为以下场景优化：</p>
+<ul>
+  <li>读多写少（频繁读取，偶尔写入）</li>
+  <li>多个 goroutine 并发访问不同 key</li>
+  <li>需要动态增删 key 的场景</li>
+</ul>
+
+<h2>与原生 map + mutex 的对比</h2>
+
+<table>
+  <tr><th>特性</th><th>map + sync.RWMutex</th><th>sync.Map</th></tr>
+  <tr><td>适用场景</td><td>写多读少，key 数量固定</td><td>读多写少，key 动态变化</td></tr>
+  <tr><td>API 复杂度</td><td>需手动加锁解锁</td><td>内置线程安全，直接调用</td></tr>
+  <tr><td>读性能</td><td>高并发读有锁竞争</td><td>无锁读（read 路径优化）</td></tr>
+  <tr><td>遍历</td><td>需加锁</td><td>提供 Range 方法（安全但无顺序）</td></tr>
+  <tr><td>len</td><td>需加锁后计算</td><td>无内置 Len 方法</td></tr>
+</table>
+
+<h2>核心 API</h2>
+
+<table>
+  <tr><th>方法</th><th>说明</th><th>示例</th></tr>
+  <tr><td><code>Store(key, value)</code></td><td>存储键值对（key 存在则覆盖）</td><td><code>m.Store("a", 1)</code></td></tr>
+  <tr><td><code>Load(key)</code></td><td>获取值，返回值和是否存在标志</td><td><code>v, ok := m.Load("a")</code></td></tr>
+  <tr><td><code>LoadOrStore(key, value)</code></td><td>获取或存储（不存在才存储）</td><td><code>v, loaded := m.LoadOrStore("a", 2)</code></td></tr>
+  <tr><td><code>Delete(key)</code></td><td>删除键值对</td><td><code>m.Delete("a")</code></td></tr>
+  <tr><td><code>Range(fn)</code></td><td>遍历所有键值对（fn 返回 false 停止）</td><td><code>m.Range(func(k, v any) bool { ... })</code></td></tr>
+</table>
+
+<h2>使用示例</h2>
+
+<h3>基础使用</h3>
+
+<pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "sync"
+)
+
+func main() {
+    var m sync.Map
+
+    // 存储
+    m.Store("key1", "value1")
+    m.Store("key2", 123)
+
+    // 读取
+    if v, ok := m.Load("key1"); ok {
+        fmt.Println("key1:", v) // key1: value1
+    }
+
+    // 读取或存储（不存在才存储）
+    v, loaded := m.LoadOrStore("key1", "new_value")
+    fmt.Println("value:", v, "loaded:", loaded) // value: value1 loaded: true
+
+    // 删除
+    m.Delete("key2")
+
+    // 遍历
+    m.Range(func(key, value any) bool {
+        fmt.Printf("%s: %v\n", key, value)
+        return true // 返回 false 停止遍历
+    })
+}</code></pre>
+
+<h3>并发场景</h3>
+
+<pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "sync"
+    "time"
+)
+
+func main() {
+    var m sync.Map
+    var wg sync.WaitGroup
+
+    // 多个 goroutine 写入
+    for i := 0; i < 10; i++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            m.Store(fmt.Sprintf("key_%d", id), id)
+        }(i)
+    }
+
+    // 多个 goroutine 读取
+    for i := 0; i < 10; i++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            time.Sleep(10 * time.Millisecond)
+            if v, ok := m.Load(fmt.Sprintf("key_%d", id)); ok {
+                fmt.Printf("Read: key_%d = %v\n", id, v)
+            }
+        }(i)
+    }
+
+    wg.Wait()
+}</code></pre>
+
+<h2>底层原理</h2>
+
+<p><code>sync.Map</code> 采用"双 map + 原子操作"设计，优化读多写少场景：</p>
+
+<pre><code class="language-go">type Map struct {
+    mu     sync.Mutex
+    read   atomic.Pointer[readOnly] // 只读 map，无锁访问
+    dirty  map[any]*entry          // 脏 map，需加锁访问
+    misses int                     // 读 miss 计数
+}
+
+type readOnly struct {
+    m       map[any]*entry
+    amended bool // dirty 是否有 read 中没有的数据
+}</code></pre>
+
+<h3>设计原理</h3>
+
+<pre><code class="language-mermaid">graph TD
+    A["读取操作 Load"] --> B{"read map 中有?"}
+    B -->|是| C["无锁返回"]
+    B -->|否| D["misses++"]
+    D --> E{"misses 达到阈值?"}
+    E -->|是| F["加锁，将 dirty 提升为 read"]
+    E -->|否| G["加锁，从 dirty 读取"]
+    
+    H["写入操作 Store"] --> I{"read map 中有该 key?"}
+    I -->|是| J["CAS 更新 entry"]
+    I -->|否| K["加锁，写入 dirty"]
+    K --> L["设置 amended=true"]</code></pre>
+
+<ul>
+  <li><strong>read map</strong>：原子指针指向，无锁并发读</li>
+  <li><strong>dirty map</strong>：锁保护，存储新写入的数据</li>
+  <li><strong>提升机制</strong>：read miss 达到一定次数后，将 dirty 提升为 read</li>
+</ul>
+
+<h2>最佳实践</h2>
+
+<h3>1. 适用场景选择</h3>
+
+<pre><code class="language-go">// 读多写少，key 动态变化 → 用 sync.Map
+var cache sync.Map
+
+// 写多读少，key 固定 → 用 map + RWMutex
+type SafeMap struct {
+    mu sync.RWMutex
+    m  map[string]int
+}</code></pre>
+
+<h3>2. 类型断言封装</h3>
+<p>sync.Map 存储的是 any 类型，建议封装类型安全的方法：</p>
+
+<pre><code class="language-go">type StringMap struct {
+    m sync.Map
+}
+
+func (sm *StringMap) Store(key string, value string) {
+    sm.m.Store(key, value)
+}
+
+func (sm *StringMap) Load(key string) (string, bool) {
+    v, ok := sm.m.Load(key)
+    if !ok {
+        return "", false
+    }
+    return v.(string), true
+}</code></pre>
+
+<h3>3. 避免频繁 Range</h3>
+<p>Range 需要遍历整个 map，性能较低，避免在高频路径调用：</p>
+
+<pre><code class="language-go">// 不推荐：每次请求都遍历
+func (sm *StringMap) GetAll() []string {
+    var result []string
+    sm.m.Range(func(k, v any) bool {
+        result = append(result, v.(string))
+        return true
+    })
+    return result
+}</code></pre>
+
+<h2>总结</h2>
+
+<table>
+  <tr><th>维度</th><th>建议</th></tr>
+  <tr><td>适用场景</td><td>读多写少、key 动态变化、并发访问不同 key</td></tr>
+  <tr><td>不适用场景</td><td>写多读少、需要 Len()、对 key 有顺序要求</td></tr>
+  <tr><td>类型安全</td><td>需自行封装类型断言</td></tr>
+  <tr><td>性能优化</td><td>批量操作、避免频繁 Range</td></tr>
+</table>

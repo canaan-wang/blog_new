@@ -1,0 +1,156 @@
+<h1>MyBatis 动态 SQL</h1>
+
+<h2>一、动态 SQL 标签</h2>
+
+<h3>1. if - 条件判断</h3>
+<pre><code class="language-xml"><select id="findUsers" resultType="User">
+    SELECT * FROM user
+    WHERE 1=1
+    <if test="name != null and name != ''">
+        AND name LIKE CONCAT('%', #{name}, '%')
+    </if>
+    <if test="status != null">
+        AND status = #{status}
+    </if>
+</select></code></pre>
+
+<h3>2. choose/when/otherwise - 多条件选择</h3>
+<pre><code class="language-xml"><select id="findUsers" resultType="User">
+    SELECT * FROM user
+    WHERE 1=1
+    <choose>
+        <when test="name != null">
+            AND name = #{name}
+        </when>
+        <when test="email != null">
+            AND email = #{email}
+        </when>
+        <otherwise>
+            AND status = 'ACTIVE'
+        </otherwise>
+    </choose>
+</select></code></pre>
+
+<h3>3. where/set/trim - 智能处理</h3>
+<pre><code class="language-xml"><!-- where 自动处理 AND/OR -->
+<select id="findUsers" resultType="User">
+    SELECT * FROM user
+    <where>
+        <if test="name != null">
+            AND name = #{name}
+        </if>
+        <if test="age != null">
+            AND age = #{age}
+        </if>
+    </where>
+</select>
+
+<!-- set 用于动态更新 -->
+<update id="updateUser">
+    UPDATE user
+    <set>
+        <if test="name != null">name = #{name},</if>
+        <if test="email != null">email = #{email},</if>
+    </set>
+    WHERE id = #{id}
+</update>
+
+<!-- trim 更灵活 -->
+<select id="findUsers" resultType="User">
+    SELECT * FROM user
+    <trim prefix="WHERE" prefixOverrides="AND |OR ">
+        <if test="name != null">AND name = #{name}</if>
+    </trim>
+</select></code></pre>
+
+<h3>4. foreach - 遍历集合</h3>
+<pre><code class="language-xml"><!-- IN 查询 -->
+<select id="findByIds" resultType="User">
+    SELECT * FROM user WHERE id IN
+    <foreach collection="list" item="id" open="(" separator="," close=")">
+        #{id}
+    </foreach>
+</select>
+
+<!-- 批量插入 -->
+<insert id="batchInsert">
+    INSERT INTO user (name, email) VALUES
+    <foreach collection="list" item="user" separator=",">
+        (#{user.name}, #{user.email})
+    </foreach>
+</insert>
+
+<!-- 批量更新 -->
+<update id="batchUpdate">
+    <foreach collection="list" item="user" separator=";">
+        UPDATE user SET name = #{user.name} WHERE id = #{user.id}
+    </foreach>
+</update></code></pre>
+
+<h3>5. bind - 变量绑定</h3>
+<pre><code class="language-xml"><select id="findUsers" resultType="User">
+    <bind name="pattern" value="'%' + name + '%'"/>
+    SELECT * FROM user WHERE name LIKE #{pattern}
+</select></code></pre>
+
+<h2>二、SQL 片段复用</h2>
+
+<pre><code class="language-xml"><sql id="userColumns">
+    id, name, email, status, created_time
+</sql>
+
+<sql id="userJoins">
+    LEFT JOIN department d ON u.dept_id = d.id
+</sql>
+
+<select id="selectUsers" resultType="User">
+    SELECT <include refid="userColumns"/>
+    FROM user u
+    <include refid="userJoins"/>
+    WHERE u.status = 'ACTIVE'
+</select></code></pre>
+
+<h2>三、注解方式动态 SQL</h2>
+
+<h3>@SelectProvider</h3>
+<pre><code class="language-java">public class UserSqlProvider {
+    public String findUsers(UserQuery query) {
+        return new SQL() {{
+            SELECT("*");
+            FROM("user");
+            if (query.getName() != null) {
+                WHERE("name LIKE #{name}");
+            }
+            if (query.getStatus() != null) {
+                WHERE("status = #{status}");
+            }
+        }}.toString();
+    }
+}
+
+@Mapper
+public interface UserMapper {
+    @SelectProvider(type = UserSqlProvider.class, method = "findUsers")
+    List<User> findUsers(UserQuery query);
+}</code></pre>
+
+<h2>四、OGNL 表达式</h2>
+
+<table>
+  <tr><th>表达式</th><th>说明</th></tr>
+  <tr><td>param1, param2</td><td>多参数引用</td></tr>
+  <tr><td>_parameter</td><td>单个参数</td></tr>
+  <tr><td>_databaseId</td><td>当前数据库标识</td></tr>
+  <tr><td>collection</td><td>传入的集合</td></tr>
+  <tr><td>item</td><td>当前元素</td></tr>
+  <tr><td>index</td><td>当前索引</td></tr>
+</table>
+
+<h2>五、最佳实践</h2>
+<ul>
+  <li>用 <where> 代替 WHERE 1=1</li>
+  <li>用 <set> 处理动态更新</li>
+  <li>foreach 注意集合大小限制</li>
+  <li>复杂 SQL 用 XML，简单用注解</li>
+  <li>SQL 片段提高复用性</li>
+</ul>

@@ -1,0 +1,129 @@
+<h1>Spring MVC</h1>
+
+<h2>一、核心组件</h2>
+
+<pre><code class="language-mermaid">graph LR
+    Client[客户端] --> Dispatcher[DispatcherServlet]
+    Dispatcher --> HandlerMapping[HandlerMapping<br>查找处理器]
+    HandlerMapping --> Controller[Controller]
+    Controller --> Service[Service]
+    Service --> DAO[DAO]
+    Controller --> ModelAndView[ModelAndView]
+    ModelAndView --> ViewResolver[ViewResolver]
+    ViewResolver --> View[View]
+    View --> Client</code></pre>
+
+<table>
+  <tr><th>组件</th><th>说明</th></tr>
+  <tr><td>DispatcherServlet</td><td>前端控制器，接收所有请求</td></tr>
+  <tr><td>HandlerMapping</td><td>请求到处理器的映射</td></tr>
+  <tr><td>Controller</td><td>业务处理器</td></tr>
+  <tr><td>ViewResolver</td><td>视图解析器</td></tr>
+  <tr><td>View</td><td>渲染视图</td></tr>
+</table>
+
+<h2>二、Controller 注解</h2>
+
+<pre><code class="language-java">@RestController  // @Controller + @ResponseBody
+@RequestMapping("/api/users")
+public class UserController {
+    
+    @GetMapping("/{id}")
+    public User getUser(@PathVariable Long id) {
+        return userService.findById(id);
+    }
+    
+    @PostMapping
+    public User createUser(@RequestBody @Valid UserDTO dto) {
+        return userService.save(dto);
+    }
+    
+    @PutMapping("/{id}")
+    public User updateUser(@PathVariable Long id, @RequestBody UserDTO dto) {
+        return userService.update(id, dto);
+    }
+    
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteUser(@PathVariable Long id) {
+        userService.delete(id);
+    }
+    
+    @GetMapping
+    public List<User> listUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return userService.findAll(PageRequest.of(page, size));
+    }
+}</code></pre>
+
+<h2>三、参数绑定</h2>
+
+<pre><code class="language-java">@GetMapping("/search")
+public List<User> search(
+        @RequestParam String name,                    // ?name=xxx
+        @RequestParam(required = false) Integer age,  // 可选
+        @RequestParam(defaultValue = "10") int size) {// 默认值
+    return userService.search(name, age, size);
+}
+
+@PostMapping("/upload")
+public String upload(@RequestParam("file") MultipartFile file) {
+    // 处理文件上传
+    return "success";
+}</code></pre>
+
+<h2>四、统一异常处理</h2>
+
+<pre><code class="language-java">@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException e) {
+        return ResponseEntity.status(404)
+            .body(new ErrorResponse(e.getMessage()));
+    }
+    
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidation(
+            MethodArgumentNotValidException e) {
+        List<String> errors = e.getBindingResult()
+            .getFieldErrors()
+            .stream()
+            .map(error -> error.getField() + ": " + error.getDefaultMessage())
+            .collect(Collectors.toList());
+        return ResponseEntity.badRequest()
+            .body(new ErrorResponse("Validation failed", errors));
+    }
+}</code></pre>
+
+<h2>五、拦截器</h2>
+
+<pre><code class="language-java">@Component
+public class AuthInterceptor implements HandlerInterceptor {
+    
+    @Override
+    public boolean preHandle(HttpServletRequest request, 
+                           HttpServletResponse response, Object handler) {
+        String token = request.getHeader("Authorization");
+        if (!validateToken(token)) {
+            response.setStatus(401);
+            return false;
+        }
+        return true;
+    }
+}
+
+// 注册拦截器
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    @Autowired
+    private AuthInterceptor authInterceptor;
+    
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(authInterceptor)
+            .addPathPatterns("/api/**")
+            .excludePathPatterns("/api/login", "/api/register");
+    }
+}</code></pre>

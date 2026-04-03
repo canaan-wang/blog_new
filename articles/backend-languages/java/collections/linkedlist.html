@@ -1,0 +1,98 @@
+<h1>Java LinkedList</h1>
+
+<h2>一、LinkedList 核心特性</h2>
+
+<ul>
+  <li>基于<strong>双向链表</strong>实现</li>
+  <li>实现了 List 和 Deque 接口，可作为列表、栈、队列使用</li>
+  <li>插入/删除快，随机访问慢</li>
+  <li>非线程安全</li>
+</ul>
+
+<pre><code class="language-mermaid">graph LR
+    A[Node1] <--prev/next--> B[Node2] <--prev/next--> C[Node3]
+    
+    style A fill:#bbf
+    style B fill:#fbf
+    style C fill:#bbf</code></pre>
+
+<h2>二、节点结构</h2>
+
+<pre><code class="language-java">private static class Node<E> {
+    E item;           // 数据
+    Node<E> next;     // 后继指针
+    Node<E> prev;     // 前驱指针
+    
+    Node(Node<E> prev, E element, Node<E> next) {
+        this.item = element;
+        this.next = next;
+        this.prev = prev;
+    }
+}</code></pre>
+
+<h2>三、常用操作</h2>
+
+<pre><code class="language-java">LinkedList<String> list = new LinkedList<>();
+
+// 添加
+list.add("A");           // 尾部添加
+list.addFirst("B");      // 头部添加
+list.addLast("C");       // 尾部添加
+list.push("D");          // 栈操作：头部添加
+
+// 获取
+String first = list.getFirst();   // 获取头部
+String last = list.getLast();     // 获取尾部
+String peek = list.peek();        // 查看头部（不移除）
+
+// 删除
+list.remove();         // 删除头部
+list.removeFirst();    // 删除头部
+list.removeLast();     // 删除尾部
+list.pop();            // 栈操作：删除头部
+String polled = list.poll();      // 删除并返回头部
+
+// 队列操作
+list.offer("E");        // 尾部添加（队列）
+String polled2 = list.poll();     // 删除头部（队列）</code></pre>
+
+<h2>四、作为栈和队列使用</h2>
+
+<pre><code class="language-java">// 作为栈使用（LIFO）
+LinkedList<String> stack = new LinkedList<>();
+stack.push("First");
+stack.push("Second");
+String top = stack.pop(); // "Second"
+
+// 作为队列使用（FIFO）
+LinkedList<String> queue = new LinkedList<>();
+queue.offer("Alice");
+queue.offer("Bob");
+String served = queue.poll(); // "Alice"</code></pre>
+
+<h2>五、性能对比</h2>
+
+<table>
+  <tr><th>操作</th><th>LinkedList</th><th>ArrayList</th></tr>
+  <tr><td>get(index)</td><td>O(n)</td><td>O(1)</td></tr>
+  <tr><td>add</td><td>O(1)</td><td>O(1) / O(n)</td></tr>
+  <tr><td>add(index)</td><td>O(n) 查找 + O(1) 插入</td><td>O(n)</td></tr>
+  <tr><td>remove</td><td>O(1)</td><td>O(n)</td></tr>
+  <tr><td>内存占用</td><td>高（指针开销）</td><td>低</td></tr>
+</table>
+
+<h2>六、适用场景</h2>
+
+<ul>
+  <li>频繁在头部/尾部插入删除</li>
+  <li>需要实现栈或队列</li>
+  <li>不需要随机访问</li>
+</ul>
+
+<h2>七、注意事项</h2>
+
+<ul>
+  <li>避免使用 get(index) 遍历，使用迭代器</li>
+  <li>比 ArrayList 占用更多内存（每个节点两个指针）</li>
+  <li>Java 6 以前存在first/last的循环引用问题，已修复</li>
+</ul>

@@ -1,0 +1,107 @@
+<h1>Java Optional</h1>
+
+<h2>一、Optional 简介</h2>
+<p>Optional 是 Java 8 引入的容器类，用于表示可能为 null 的值，避免 NullPointerException。</p>
+
+<h2>二、创建 Optional</h2>
+
+<pre><code class="language-java">import java.util.Optional;
+
+// 有值
+Optional<String> present = Optional.of("value");  // null 会抛 NPE
+Optional<String> nullable = Optional.ofNullable(getValue());  // 允许 null
+
+// 空值
+Optional<String> empty = Optional.empty();
+
+// 不推荐（违背设计初衷）
+Optional<String> bad = Optional.ofNullable(null);</code></pre>
+
+<h2>三、常用方法</h2>
+
+<table>
+  <tr><th>方法</th><th>说明</th><th>空值时行为</th></tr>
+  <tr><td>isPresent()</td><td>是否有值</td><td>返回 false</td></tr>
+  <tr><td>isEmpty()</td><td>是否为空（JDK11+）</td><td>返回 true</td></tr>
+  <tr><td>get()</td><td>获取值</td><td>抛 NoSuchElementException</td></tr>
+  <tr><td>orElse(T)</td><td>获取值或默认值</td><td>返回默认值</td></tr>
+  <tr><td>orElseGet(Supplier)</td><td>获取值或延迟提供</td><td>执行 Supplier</td></tr>
+  <tr><td>orElseThrow()</td><td>获取值或抛异常</td><td>抛异常</td></tr>
+  <tr><td>or(Supplier)</td><td>获取值或返回另一 Optional（JDK9+）</td><td>-</td></tr>
+  <tr><td>ifPresent(Consumer)</td><td>有值时消费</td><td>什么都不做</td></tr>
+  <tr><td>ifPresentOrElse(Consumer, Runnable)</td><td>有值消费，无值执行另一操作（JDK9+）</td><td>-</td></tr>
+</table>
+
+<h2>四、函数式操作</h2>
+
+<pre><code class="language-java">Optional<String> opt = Optional.of("Hello");
+
+// map：转换值
+Optional<Integer> length = opt.map(String::length);  // Optional[5]
+
+// flatMap：避免嵌套 Optional
+Optional<Optional<String>> nested = opt.map(this::findByName);  // 不好
+Optional<String> flat = opt.flatMap(this::findByName);          // 好
+
+// filter：条件过滤
+Optional<String> filtered = opt.filter(s -> s.length() > 3);  // Optional[Hello]
+
+// 链式操作
+String result = getUserById(id)
+    .map(User::getAddress)
+    .map(Address::getCity)
+    .filter(city -> !city.isEmpty())
+    .orElse("Unknown");</code></pre>
+
+<h2>五、使用示例</h2>
+
+<h3>替代 null 返回</h3>
+<pre><code class="language-java">// 不推荐
+public String findUserName(Long id) {
+    User user = userRepo.findById(id);
+    return user != null ? user.getName() : null;
+}
+
+// 推荐
+public Optional<String> findUserName(Long id) {
+    return Optional.ofNullable(userRepo.findById(id))
+        .map(User::getName);
+}</code></pre>
+
+<h3>避免嵌套 if</h3>
+<pre><code class="language-java">// 不推荐
+if (user != null) {
+    Address address = user.getAddress();
+    if (address != null) {
+        String city = address.getCity();
+        if (city != null) {
+            return city.toUpperCase();
+        }
+    }
+}
+return "UNKNOWN";
+
+// 推荐
+return Optional.ofNullable(user)
+    .map(User::getAddress)
+    .map(Address::getCity)
+    .map(String::toUpperCase)
+    .orElse("UNKNOWN");</code></pre>
+
+<h2>六、Optional 最佳实践</h2>
+
+<table>
+  <tr><th>推荐</th><th>避免</th></tr>
+  <tr><td>作为方法返回值</td><td>作为字段</td></tr>
+  <tr><td>链式处理空值</td><td>isPresent() 后 get()</td></tr>
+  <tr><td>orElseGet 用于延迟计算</td><td>orElse 用于固定值</td></tr>
+  <tr><td>orElseThrow 提供有意义异常</td><td>直接 get()</td></tr>
+</table>
+
+<h2>七、注意事项</h2>
+<ul>
+  <li>Optional 本身也可能为 null（不要这样用）</li>
+  <li>不要在集合中使用 Optional（用空集合代替）</li>
+  <li>不要用 == 比较 Optional</li>
+  <li>序列化：Optional 不支持序列化</li>
+</ul>

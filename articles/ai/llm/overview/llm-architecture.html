@@ -1,0 +1,45 @@
+<h1>LLM 架构详解</h1>
+<p>本文通过图表介绍大语言模型的核心架构组件。</p>
+
+<h2>Transformer 架构</h2>
+<p>Transformer 是现代大语言模型的基础架构，主要由编码器和解码器组成：</p>
+
+<pre><code class="language-mermaid">graph TD
+    A[输入文本] --> B[词嵌入<br/>Embedding]
+    B --> C[位置编码<br/>Positional Encoding]
+    C --> D[多头注意力<br/>Multi-Head Attention]
+    D --> E[前馈网络<br/>Feed Forward]
+    E --> F[输出]
+    
+    style D fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333
+</code></pre>
+
+<h2>注意力机制</h2>
+<p>自注意力机制是 Transformer 的核心创新：</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Q as Query
+    participant K as Key
+    participant V as Value
+    
+    Q->>K: 计算相似度
+    K-->>Q: 返回权重
+    Q->>V: 加权求和
+    V-->>Q: 输出结果
+</code></pre>
+
+<h2>模型训练流程</h2>
+
+<pre><code class="language-mermaid">flowchart LR
+    A[预训练<br/>Pre-training] --> B[微调<br/>Fine-tuning]
+    B --> C[RLHF<br/>人类反馈强化学习]
+    C --> D[模型部署]
+    
+    style A fill:#e1f5e1
+    style B fill:#fff4e1
+    style C fill:#ffe1e1
+</code></pre>
+
+<h2>总结</h2>
+<p>通过理解这些架构组件，可以更好地掌握大语言模型的工作原理。</p>

@@ -1,0 +1,132 @@
+<h1>Java CountDownLatch</h1>
+
+<h2>一、简介</h2>
+<p>CountDownLatch 是一个同步工具类，用于一个或多个线程等待其他线程完成操作。内部维护一个计数器，减到 0 时等待线程被唤醒。</p>
+
+<h2>二、基本用法</h2>
+
+<pre><code class="language-java">import java.util.concurrent.CountDownLatch;
+
+public class CountDownLatchDemo {
+    public static void main(String[] args) throws InterruptedException {
+        int workerCount = 3;
+        CountDownLatch latch = new CountDownLatch(workerCount);
+        
+        for (int i = 0; i < workerCount; i++) {
+            final int id = i;
+            new Thread(() -> {
+                System.out.println("Worker " + id + " started");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                System.out.println("Worker " + id + " finished");
+                latch.countDown();  // 计数器减 1
+            }).start();
+        }
+        
+        System.out.println("Main thread waiting...");
+        latch.await();  // 等待计数器归零
+        System.out.println("All workers finished!");
+    }
+}</code></pre>
+
+<h2>三、核心方法</h2>
+
+<table>
+  <tr><th>方法</th><th>说明</th></tr>
+  <tr><td>CountDownLatch(int count)</td><td>构造方法，指定初始计数</td></tr>
+  <tr><td>void await()</td><td>阻塞等待，直到计数为 0</td></tr>
+  <tr><td>boolean await(long timeout, TimeUnit unit)</td><td>超时等待</td></tr>
+  <tr><td>void countDown()</td><td>计数器减 1</td></tr>
+  <tr><td>long getCount()</td><td>获取当前计数</td></tr>
+</table>
+
+<h2>四、应用场景</h2>
+
+<h3>1. 多任务并行后汇总</h3>
+<pre><code class="language-java">public class ParallelDataLoader {
+    public Map<String, Object> loadData() throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(3);
+        Map<String, Object> result = new ConcurrentHashMap<>();
+        
+        // 并行加载用户数据
+        executor.execute(() -> {
+            result.put("user", loadUser());
+            latch.countDown();
+        });
+        
+        // 并行加载订单数据
+        executor.execute(() -> {
+            result.put("orders", loadOrders());
+            latch.countDown();
+        });
+        
+        // 并行加载配置数据
+        executor.execute(() -> {
+            result.put("config", loadConfig());
+            latch.countDown();
+        });
+        
+        latch.await();  // 等待全部完成
+        return result;
+    }
+}</code></pre>
+
+<h3>2. 服务启动检查</h3>
+<pre><code class="language-java">public class ServiceStarter {
+    private final CountDownLatch startupLatch = new CountDownLatch(1);
+    
+    public void start() {
+        new Thread(() -> {
+            // 初始化各种资源
+            initDatabase();
+            initCache();
+            initMQ();
+            startupLatch.countDown();  // 启动完成
+        }).start();
+    }
+    
+    public void waitForStartup() throws InterruptedException {
+        startupLatch.await();  // 等待启动完成
+    }
+}</code></pre>
+
+<h3>3. 压力测试等待</h3>
+<pre><code class="language-java">public class LoadTest {
+    public void runTest(int threadCount) throws InterruptedException {
+        CountDownLatch readyLatch = new CountDownLatch(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threadCount);
+        
+        for (int i = 0; i < threadCount; i++) {
+            new Thread(() -> {
+                readyLatch.countDown();  // 报告准备就绪
+                try {
+                    startLatch.await();  // 等待发令枪
+                    // 执行业务测试
+                    doWork();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    doneLatch.countDown();
+                }
+            }).start();
+        }
+        
+        readyLatch.await();     // 等待所有线程就绪
+        long start = System.currentTimeMillis();
+        startLatch.countDown(); // 发令：同时开始！
+        doneLatch.await();      // 等待所有线程完成
+        System.out.println("Total time: " + (System.currentTimeMillis() - start));
+    }
+}</code></pre>
+
+<h2>五、注意事项</h2>
+<ul>
+  <li>计数器不能重置，只能用一次</li>
+  <li>countDown() 不会阻塞，await() 才会</li>
+  <li>计数为 0 后再调用 await() 立即返回</li>
+  <li>适合一个/多个线程等一个/多个线程的场景</li>
+</ul>
