@@ -43,6 +43,13 @@ export const domains: Domain[] = [
     icon: "server",
     order: 5,
   },
+  {
+    slug: "frontend",
+    title: "前端开发",
+    description: "前端技术栈，包括 HTML、CSS、JavaScript、TypeScript、Vue、React 等",
+    icon: "layout",
+    order: 6,
+  },
 ];
 
 export const categoriesByDomain: Record<string, Category[]> = {
@@ -182,6 +189,36 @@ export const categoriesByDomain: Record<string, Category[]> = {
       domainSlug: "infrastructure",
     },
   ],
+  "frontend": [
+    {
+      slug: "html",
+      title: "HTML",
+      description: "HTML5 语义化标签、DOM 结构、表单与多媒体",
+      order: 1,
+      domainSlug: "frontend",
+    },
+    {
+      slug: "css",
+      title: "CSS",
+      description: "CSS3 样式、布局、动画、响应式设计",
+      order: 2,
+      domainSlug: "frontend",
+    },
+    {
+      slug: "typescript",
+      title: "TypeScript",
+      description: "TypeScript 类型系统、编译配置、高级特性",
+      order: 3,
+      domainSlug: "frontend",
+    },
+    {
+      slug: "vue",
+      title: "Vue",
+      description: "Vue.js 框架、组件化、状态管理、工程化",
+      order: 4,
+      domainSlug: "frontend",
+    },
+  ],
 };
 
 // 分组配置：每个分类下的分组定义
@@ -305,6 +342,35 @@ export const groupsByCategory: Record<string, Group[]> = {
     { slug: "grafana", title: "Grafana", categorySlug: "monitoring", order: 3 },
     { slug: "tracing", title: "链路追踪", categorySlug: "monitoring", order: 4 },
     { slug: "elk", title: "ELK", categorySlug: "monitoring", order: 5 },
+  ],
+  // HTML
+  "html": [
+    { slug: "overview", title: "HTML 概述", categorySlug: "html", order: 1 },
+    { slug: "semantic", title: "语义化标签", categorySlug: "html", order: 2 },
+    { slug: "forms", title: "表单与输入", categorySlug: "html", order: 3 },
+    { slug: "multimedia", title: "多媒体元素", categorySlug: "html", order: 4 },
+  ],
+  // CSS
+  "css": [
+    { slug: "overview", title: "CSS 概述", categorySlug: "css", order: 1 },
+    { slug: "layout", title: "布局技术", categorySlug: "css", order: 2 },
+    { slug: "animation", title: "动画与过渡", categorySlug: "css", order: 3 },
+    { slug: "responsive", title: "响应式设计", categorySlug: "css", order: 4 },
+  ],
+  // TypeScript
+  "typescript": [
+    { slug: "overview", title: "TypeScript 概述", categorySlug: "typescript", order: 1 },
+    { slug: "types", title: "类型系统", categorySlug: "typescript", order: 2 },
+    { slug: "advanced", title: "高级特性", categorySlug: "typescript", order: 3 },
+    { slug: "config", title: "编译配置", categorySlug: "typescript", order: 4 },
+  ],
+  // Vue
+  "vue": [
+    { slug: "overview", title: "Vue 概述", categorySlug: "vue", order: 1 },
+    { slug: "basics", title: "基础语法", categorySlug: "vue", order: 2 },
+    { slug: "components", title: "组件化", categorySlug: "vue", order: 3 },
+    { slug: "state", title: "状态管理", categorySlug: "vue", order: 4 },
+    { slug: "engineering", title: "工程化", categorySlug: "vue", order: 5 },
   ],
 };
 

@@ -59,6 +59,10 @@ export default function ArticleContent({ html }: ArticleContentProps) {
     <div
       ref={containerRef}
       className="prose prose-lg max-w-none article-html-content"
+      style={{
+        ['--tw-prose-pre-bg' as string]: '#faf7f2',
+        ['--tw-prose-pre-code' as string]: '#2c2c2c',
+      }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

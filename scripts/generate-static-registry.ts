@@ -93,11 +93,17 @@ function getFileDate(filePath: string): string {
  */
 function inferGroup(category: string): string {
   const groupMap: Record<string, string> = {
+    // AI 领域
     "llm": "大语言模型",
     "machine-learning": "机器学习",
     "prompt-engineering": "提示工程",
     "ai-application": "AI 应用",
     "multimodal-ai": "多模态 AI",
+    // 前端领域 - 使用 group slug
+    "html": "overview",
+    "css": "overview",
+    "typescript": "overview",
+    "vue": "overview",
   };
   return groupMap[category] || "未分类";
 }

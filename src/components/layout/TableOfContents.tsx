@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
 interface Heading {
   id: string;
   text: string;
   level: number;
+}
+
+// Generate slug from text for headings without id
+function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .substring(0, 50);
 }
 
 interface Section {
@@ -18,6 +28,14 @@ export default function TableOfContents() {
   const [headings, setHeadings] = useState<Heading[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const pathname = usePathname();
+
+  // Reset headings when pathname changes
+  useEffect(() => {
+    setHeadings([]);
+    setActiveId("");
+    setExpanded(new Set());
+  }, [pathname]);
 
   // Extract headings from DOM
   useEffect(() => {
@@ -25,19 +43,34 @@ export default function TableOfContents() {
       const article = document.querySelector("article");
       if (!article) return;
       
-      const elements = article.querySelectorAll("h2[id], h3[id]");
+      // Select all h2 and h3 elements, not just those with id
+      const elements = article.querySelectorAll("h2, h3");
       const data: Heading[] = [];
+      const slugCounts = new Map<string, number>();
       
       elements.forEach((el) => {
-        const id = el.getAttribute("id");
+        let id = el.getAttribute("id");
         const text = el.textContent || "";
         const level = el.tagName === "H2" ? 2 : 3;
-        if (id) {
-          data.push({ id, text, level });
+        
+        // If no id, generate one from text
+        if (!id) {
+          let slug = generateSlug(text);
+          // Handle duplicate slugs
+          const count = slugCounts.get(slug) || 0;
+          if (count > 0) {
+            slug = `${slug}-${count}`;
+          }
+          slugCounts.set(slug, count + 1);
+          id = slug;
+          // Set the id on the element for scroll targeting
+          el.setAttribute("id", id);
         }
+        
+        data.push({ id, text, level });
       });
       
-      if (data.length > 0 && headings.length === 0) {
+      if (data.length > 0) {
         setHeadings(data);
         
         const toExpand = new Set<string>();
@@ -98,7 +131,7 @@ export default function TableOfContents() {
 
     const article = document.querySelector("article");
     if (article) {
-      const h2h3 = article.querySelectorAll("h2[id], h3[id]");
+      const h2h3 = article.querySelectorAll("h2, h3");
       h2h3.forEach(el => observer.observe(el));
     }
 

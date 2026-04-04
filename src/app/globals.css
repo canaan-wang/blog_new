@@ -75,10 +75,33 @@ body {
   --tw-prose-headings: var(--foreground);
   --tw-prose-links: var(--link);
   --tw-prose-code: var(--foreground);
-  --tw-prose-pre-bg: #2d2a2e;
-  --tw-prose-pre-code: #e8e0d8;
+  --tw-prose-pre-bg: #faf7f2;
+  --tw-prose-pre-code: var(--foreground);
   --tw-prose-quotes: var(--muted);
   --tw-prose-quote-borders: var(--accent);
+}
+
+/* Code block styles - override all */
+.prose pre,
+.article-html-content pre,
+[data-pre] {
+  background-color: #faf7f2 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.5rem !important;
+}
+
+.prose pre code,
+.article-html-content pre code,
+[data-pre] code {
+  background-color: transparent !important;
+  color: var(--foreground) !important;
+}
+
+/* Force light background for all pre elements */
+pre[class*="language-"],
+pre code[class*="language-"] {
+  background-color: #faf7f2 !important;
+  color: var(--foreground) !important;
 }
 
 .prose a:hover {

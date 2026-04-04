@@ -109,14 +109,32 @@ function SidebarInner({ data }: SidebarProps) {
               <button
                 key={cat.slug}
                 onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set("category", cat.slug);
-                  // If on article page, navigate to domain page with category param
-                  // Otherwise stay on current page and update param
-                  const targetPath = isArticlePage
-                    ? `/${data.domain.slug}`
-                    : pathname;
-                  router.push(`${targetPath}?${params.toString()}`);
+                  // 找到该分类的第一篇文章（优先 overview 分组）
+                  const groupConfigs = getGroups(cat.slug);
+                  const overviewGroup = groupConfigs.find(g => g.slug === "overview");
+                  
+                  let targetArticle = null;
+                  if (overviewGroup) {
+                    // 优先找 overview 分组的文章
+                    targetArticle = cat.articles.find(a => a.group === "overview");
+                  }
+                  // 如果没有 overview 文章，取第一个
+                  if (!targetArticle && cat.articles.length > 0) {
+                    targetArticle = cat.articles[0];
+                  }
+                  
+                  if (targetArticle) {
+                    // 跳转到文章页面
+                    router.push(`/${data.domain.slug}/${targetArticle.slug}`);
+                  } else {
+                    // 没有文章，只切换分类
+                    const params = new URLSearchParams(searchParams.toString());
+                    params.set("category", cat.slug);
+                    const targetPath = isArticlePage
+                      ? `/${data.domain.slug}`
+                      : pathname;
+                    router.push(`${targetPath}?${params.toString()}`);
+                  }
                 }}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   activeCategory === cat.slug
