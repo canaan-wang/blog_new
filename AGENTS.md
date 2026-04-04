@@ -107,51 +107,60 @@ npx tsx scripts/generate-static-registry.ts
 ### Content Hierarchy
 
 ```
-Domain（领域）→ Category（分类）→ Article（文章）
+Domain（领域）→ Category（分类）→ Group（分组）→ Article（文章）
 ```
 
-**示例路径**：`content/software-dev-languages/golang/go-channel.mdx`
+**示例路径**：`articles/frontend/vue/overview/vue-overview.html`
 
-- **Domain**: `software-dev-languages`（软件开发语言）
-- **Category**: `golang`（Go 语言）
-- **Article**: `go-channel.mdx`（Channel 文章）
+- **Domain**: `frontend`（前端开发）
+- **Category**: `vue`（Vue 技术栈）
+- **Group**: `overview`（文章分组，用于侧边栏组织）
+- **Article**: `vue-overview.html`（文章文件，HTML 格式）
 
 ### Content Generation Flow
 
-1. **开发阶段**：在 `content/{domain}/{category}/` 目录下编写 MDX 文件
-2. **构建阶段**：`scripts/generate-static-registry.ts` 扫描 content 目录
-3. **生成阶段**：脚本解析 MDX frontmatter，生成 `src/lib/static-content.ts`
+1. **开发阶段**：在 `articles/{domain}/{category}/{group}/` 目录下编写 HTML 文件
+2. **构建阶段**：`scripts/generate-static-registry.ts` 扫描 articles 目录
+3. **生成阶段**：脚本解析 HTML 文件，提取标题、摘要等信息，生成 `src/lib/static-content.ts`
 4. **渲染阶段**：Next.js 使用静态数据渲染页面
 
 **重要**：`src/lib/static-content.ts` 是自动生成的文件，**不要手动编辑**。
 
-### MDX Frontmatter 格式
+### HTML Article Format
 
-```yaml
----
-title: "文章标题"
-date: "2025-12-22"
-updated: "2026-01-15"           # 可选：更新日期
-summary: "文章摘要描述"
-tags: ["golang", "channel"]     # 标签数组
-category: "golang"              # 必须匹配分类 slug
-domain: "software-dev-languages" # 必须匹配领域 slug
-group: "复合数据类型"            # 侧边栏分组名称
-draft: false                    # 草稿标记（true 则不会显示）
----
+文章使用 HTML 格式，标题从 `<h1>` 标签自动提取，摘要从第一段 `<p>` 标签自动提取：
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>文章标题</title>
+</head>
+<body>
+    <h1>文章标题</h1>
+    <p>文章摘要，将作为列表中的描述显示...</p>
+    <h2>章节标题</h2>
+    <p>正文内容...</p>
+</body>
+</html>
 ```
+
+**注意**：文章的分组（group）由文件路径中的目录名决定，如 `articles/frontend/vue/overview/` 中的 `overview`。
 
 ### Special Files
 
-- **`_intro.mdx`**: 分类介绍文件，放置在分类目录下，用于在领域首页展示该分类的概览内容
+- **`_intro.html`**: 分类介绍文件，放置在分类目录下，用于在领域首页展示该分类的概览内容
 
 ### Content Organization Guidelines
 
 1. **Domain slug** 使用 kebab-case（如 `software-dev-languages`）
 2. **Category slug** 使用 kebab-case（如 `message-queue`）
-3. **Article slug** 从文件名自动提取（如 `go-channel.mdx` → slug: `go-channel`）
-4. **Group 字段** 用于侧边栏内对文章进行分组显示（如 "复合数据类型"、"并发编程"）
-5. 文章按发布日期倒序排列（最新的在前）
+3. **Group slug** 使用 kebab-case（如 `overview`, `basics`, `advanced`）
+4. **Article slug** 从文件名自动提取（如 `vue-overview.html` → slug: `vue-overview`）
+5. **文件路径必须是 4 级结构**：`articles/{domain}/{category}/{group}/{slug}.html`
+6. **Group 字段** 用于侧边栏内对文章进行分组显示（如 "概述"、"基础语法"）
+7. 文章按发布日期倒序排列（最新的在前）
 
 ---
 
@@ -162,8 +171,12 @@ draft: false                    # 草稿标记（true 则不会显示）
 ```typescript
 // domains 数组定义所有领域
 export const domains: Domain[] = [
-  { slug: "software-dev-languages", title: "软件开发语言", ... },
-  { slug: "distributed-architecture", title: "分布式架构", ... },
+  { slug: "ai", title: "人工智能", ... },
+  { slug: "backend-languages", title: "后端开发语言", ... },
+  { slug: "data-storage", title: "数据存储", ... },
+  { slug: "distributed-system", title: "分布式系统", ... },
+  { slug: "infrastructure", title: "基础架构", ... },
+  { slug: "frontend", title: "前端开发", ... },  // 前端开发领域
   // ...
 ];
 
@@ -173,6 +186,12 @@ export const categoriesByDomain: Record<string, Category[]> = {
     { slug: "golang", title: "Golang", ... },
     { slug: "java", title: "Java", ... },
   ],
+  "frontend": [  // 前端领域分类
+    { slug: "html", title: "HTML", ... },
+    { slug: "css", title: "CSS", ... },
+    { slug: "typescript", title: "TypeScript", ... },
+    { slug: "vue", title: "Vue", ... },
+  ],
   // ...
 };
 ```
@@ -181,24 +200,22 @@ export const categoriesByDomain: Record<string, Category[]> = {
 
 ---
 
-## MDX Processing Pipeline
+## HTML Processing Pipeline
 
-文章渲染使用 `next-mdx-remote/rsc`，处理流程如下：
+文章渲染使用原生 HTML，处理流程如下：
 
-### Remark Plugins（Markdown 处理）
+### HTML Processing
 
-1. **remark-gfm**: GitHub Flavored Markdown（表格、删除线、任务列表等）
-
-### Rehype Plugins（HTML 处理）
-
-1. **rehype-slug**: 为标题添加 ID 属性（用于目录锚点）
-2. **rehype-pretty-code**: 代码块语法高亮
+1. **标题提取**: 从 `<h1>` 标签提取文章标题
+2. **摘要提取**: 从第一个 `<p>` 标签提取摘要
+3. **目录生成**: 从 `<h2>`、`<h3>` 标签生成文章目录
+4. **代码高亮**: `rehype-pretty-code` 为代码块添加语法高亮
    - 主题：monokai
    - 保留背景色
 
 ### Custom Components
 
-自定义 MDX 组件位于 `src/components/article/MDXComponents.tsx`：
+自定义渲染组件位于 `src/components/article/MDXComponents.tsx`：
 
 - `h1`, `h2`, `h3`: 标题样式
 - `a`: 链接自动识别外部链接（添加 `target="_blank"`）
@@ -246,6 +263,12 @@ export const categoriesByDomain: Record<string, Category[]> = {
 - **文章正文**: 最大宽度 3xl (768px)
 - **侧边栏**: 宽度 280px，固定左侧
 - **目录**: 宽度 15% (min 12rem, max 16rem)，固定右侧（仅桌面端显示）
+
+### Sidebar Navigation Behavior
+
+- **点击分类标签**: 自动跳转到该分类 `overview` 分组的第一篇文章
+- **分组展示**: 文章按 group 字段分组，在侧边栏中折叠展示
+- **默认展开**: 当前文章所在分组自动展开
 
 ---
 
