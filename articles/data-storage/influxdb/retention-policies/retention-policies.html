@@ -1,0 +1,629 @@
+<h1>InfluxDB 保留策略详解</h1>
+<h2>保留策略概述</h2>
+<p><strong>保留策略（Retention Policy, RP）</strong> 是 InfluxDB 的核心功能，用于自动管理数据的生命周期，控制数据的存储时间和副本数。</p>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph DataLifecycle[&quot;数据生命周期&quot;]
+        D1[&quot;热数据\n0-7天\n高频访问&quot;]
+        D2[&quot;温数据\n7-30天\n偶尔访问&quot;]
+        D3[&quot;冷数据\n30-90天\n归档存储&quot;]
+        D4[&quot;过期数据\n&gt;90天\n自动删除&quot;]
+    end
+    
+    subgraph RP[&quot;保留策略&quot;]
+        R1[&quot;7天 RP\n原始数据&quot;]
+        R2[&quot;30天 RP\n5分钟聚合&quot;]
+        R3[&quot;90天 RP\n1小时聚合&quot;]
+    end
+    
+    DataLifecycle --&gt;|降采样| RP
+    
+    style DataLifecycle fill:#e3f2fd
+    style RP fill:#e8f5e9
+</code></pre>
+<h2>核心概念</h2>
+<h3>保留策略三要素</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph RPComponents[&quot;保留策略组成&quot;]
+        Name[&quot;1. 名称\n如: autogen, 7days&quot;]
+        Duration[&quot;2. 持续时间\n数据保留多久&quot;]
+        Replication[&quot;3. 副本数\n仅集群有效&quot;]
+    end
+    
+    style RPComponents fill:#fff3e0
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>说明</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Name</strong></td>
+<td>策略名称</td>
+<td><code>autogen</code>, <code>one_week</code>, <code>raw_data</code></td>
+</tr>
+<tr>
+<td><strong>Duration</strong></td>
+<td>数据保留时长</td>
+<td><code>7d</code>, <code>30d</code>, <code>INF</code>（永不过期）</td>
+</tr>
+<tr>
+<td><strong>Replication</strong></td>
+<td>副本因子</td>
+<td><code>1</code>（单节点），集群中可 &gt; 1</td>
+</tr>
+<tr>
+<td><strong>Default</strong></td>
+<td>是否为默认策略</td>
+<td>一个 DB 只有一个默认 RP</td>
+</tr>
+</tbody></table>
+<h2>InfluxDB 1.x 保留策略</h2>
+<h3>管理命令</h3>
+<pre><code class="language-sql">-- 查看保留策略
+SHOW RETENTION POLICIES ON mydb
+
+-- 创建保留策略
+CREATE RETENTION POLICY one_week ON mydb 
+    DURATION 7d 
+    REPLICATION 1 
+    DEFAULT
+
+CREATE RETENTION POLICY thirty_days ON mydb 
+    DURATION 30d 
+    REPLICATION 1
+
+CREATE RETENTION POLICY one_year ON mydb 
+    DURATION 365d 
+    REPLICATION 1
+
+-- 修改保留策略
+ALTER RETENTION POLICY one_week ON mydb DURATION 14d
+
+-- 删除保留策略
+DROP RETENTION POLICY thirty_days ON mydb
+</code></pre>
+<h3>策略配置示例</h3>
+<pre><code class="language-sql">-- 完整示例：监控数据分层存储
+
+-- 1. 创建数据库
+CREATE DATABASE monitoring
+
+-- 2. 创建原始数据保留策略（7天）
+CREATE RETENTION POLICY raw_data ON monitoring 
+    DURATION 7d 
+    REPLICATION 1 
+    DEFAULT
+
+-- 3. 创建聚合数据保留策略（30天）
+CREATE RETENTION POLICY aggregated_5m ON monitoring 
+    DURATION 30d 
+    REPLICATION 1
+
+-- 4. 创建长期归档策略（1年）
+CREATE RETENTION POLICY archived_1h ON monitoring 
+    DURATION 365d 
+    REPLICATION 1
+
+-- 查看结果
+SHOW RETENTION POLICIES ON monitoring
+
+-- 输出：
+-- name              duration  shardGroupDuration  replicaN  default
+-- ----              --------  ------------------  --------  -------
+-- autogen           0s        168h0m0s            1         false
+-- raw_data          168h0m0s  24h0m0s             1         true
+-- aggregated_5m     720h0m0s  24h0m0s             1         false
+-- archived_1h       8760h0m0s 168h0m0s            1         false
+</code></pre>
+<pre><code class="language-mermaid">timeline
+    title 分层保留策略时间线
+    section 0-7天
+        raw_data : 原始高频数据
+    section 7-30天
+        aggregated_5m : 5分钟聚合数据
+    section 30-365天
+        archived_1h : 1小时聚合数据
+</code></pre>
+<h2>InfluxDB 2.x 保留策略</h2>
+<h3>Bucket 级别的保留</h3>
+<p>在 InfluxDB 2.x 中，保留策略被简化为 <strong>Bucket</strong> 级别的配置：</p>
+<pre><code class="language-bash"># 创建带保留策略的 Bucket
+influx bucket create \
+    --name my-bucket \
+    --retention 7d \
+    --org my-org
+
+# 创建永不过期的 Bucket
+influx bucket create \
+    --name infinite-bucket \
+    --retention 0 \
+    --org my-org
+
+# 修改 Bucket 保留策略
+influx bucket update \
+    --id BUCKET_ID \
+    --retention 30d \
+    --org my-org
+
+# 删除 Bucket
+influx bucket delete \
+    --id BUCKET_ID \
+    --org my-org
+</code></pre>
+<h3>API 管理</h3>
+<pre><code class="language-python"># Python 管理 Bucket 保留策略
+from influxdb_client import InfluxDBClient, BucketRetentionRules
+
+client = InfluxDBClient(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;your-token&quot;,
+    org=&quot;my-org&quot;
+)
+
+buckets_api = client.buckets_api()
+
+# 创建 7天保留策略的 Bucket
+bucket = buckets_api.create_bucket(
+    bucket_name=&quot;monitoring-7d&quot;,
+    retention_rules=BucketRetentionRules(
+        every_seconds=7 * 24 * 60 * 60  # 7天
+    ),
+    org=&quot;my-org&quot;
+)
+
+# 修改保留策略
+from influxdb_client.domain.bucket import Bucket
+from influxdb_client.domain.retention_rule import RetentionRule
+
+bucket = buckets_api.find_bucket_by_name(&quot;monitoring-7d&quot;)
+bucket.retention_rules = [
+    RetentionRule(every_seconds=30 * 24 * 60 * 60)  # 改为30天
+]
+buckets_api.update_bucket(bucket)
+
+# 列出所有 Buckets
+buckets = buckets_api.find_buckets()
+for b in buckets.buckets:
+    print(f&quot;{b.name}: {b.retention_rules[0].every_seconds / 86400} days&quot;)
+</code></pre>
+<h2>降采样（Downsampling）</h2>
+<h3>什么是降采样</h3>
+<p>降采样是将高频数据聚合成低频数据的过程，减少存储空间的同时保留数据趋势。</p>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Raw[&quot;原始数据&quot;]
+        R1[&quot;P1: 10s&quot;]
+        R2[&quot;P2: 10s&quot;]
+        R3[&quot;P3: 10s&quot;]
+        R4[&quot;P4: 10s&quot;]
+        R5[&quot;P5: 10s&quot;]
+        R6[&quot;P6: 10s&quot;]
+    end
+    
+    subgraph Agg[&quot;聚合后&quot;]
+        A1[&quot;M1: mean(1m)&quot;]
+        A2[&quot;M2: mean(1m)&quot;]
+    end
+    
+    R1 --&gt; A1
+    R2 --&gt; A1
+    R3 --&gt; A1
+    R4 --&gt; A2
+    R5 --&gt; A2
+    R6 --&gt; A2
+    
+    style Raw fill:#e3f2fd
+    style Agg fill:#e8f5e9
+</code></pre>
+<p><strong>降采样的好处：</strong></p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>降采样前</th>
+<th>降采样后</th>
+<th>改善</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>数据点数量</td>
+<td>8,640/天</td>
+<td>288/天 (5m)</td>
+<td>96.7%↓</td>
+</tr>
+<tr>
+<td>存储空间</td>
+<td>100%</td>
+<td>~10%</td>
+<td>90%↓</td>
+</tr>
+<tr>
+<td>查询速度</td>
+<td>慢</td>
+<td>快</td>
+<td>10x+</td>
+</tr>
+<tr>
+<td>数据精度</td>
+<td>高</td>
+<td>趋势保留</td>
+<td>适合分析</td>
+</tr>
+</tbody></table>
+<h3>使用连续查询（CQ）实现降采样</h3>
+<p>InfluxDB 1.x 中的连续查询：</p>
+<pre><code class="language-sql">-- 创建连续查询：每5分钟聚合一次，保存到另一个 RP
+CREATE CONTINUOUS QUERY cq_5m ON monitoring
+BEGIN
+    SELECT mean(usage_user) AS usage_user,
+           mean(usage_system) AS usage_system,
+           max(usage_user) AS max_usage_user
+    INTO monitoring.aggregated_5m.cpu
+    FROM monitoring.raw_data.cpu
+    GROUP BY time(5m), host, region
+END
+
+-- 创建每小时聚合的 CQ
+CREATE CONTINUOUS QUERY cq_1h ON monitoring
+BEGIN
+    SELECT mean(usage_user) AS usage_user,
+           mean(usage_system) AS usage_system
+    INTO monitoring.archived_1h.cpu
+    FROM monitoring.aggregated_5m.cpu
+    GROUP BY time(1h), host, region
+END
+
+-- 查看连续查询
+SHOW CONTINUOUS QUERIES
+
+-- 删除连续查询
+DROP CONTINUOUS QUERY cq_5m ON monitoring
+</code></pre>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph CQFlow[&quot;连续查询数据流&quot;]
+        Raw[(&quot;raw_data\n10s 精度&quot;)] --&gt;|cq_5m\nevery 5m| Agg5m[(&quot;aggregated_5m\n5m 精度&quot;)]
+        Agg5m --&gt;|cq_1h\nevery 1h| Agg1h[(&quot;archived_1h\n1h 精度&quot;)]
+    end
+    
+    subgraph Retention[&quot;过期清理&quot;]
+        R1[&quot;7天后删除&quot;]
+        R2[&quot;30天后删除&quot;]
+        R3[&quot;1年后删除&quot;]
+    end
+    
+    Raw --&gt; R1
+    Agg5m --&gt; R2
+    Agg1h --&gt; R3
+</code></pre>
+<h3>InfluxDB 2.x 使用 Task 实现降采样</h3>
+<pre><code class="language-flux">// Task 定义：每5分钟执行降采样
+option task = {
+    name: &quot;downsample-5m&quot;,
+    every: 5m,
+}
+
+from(bucket: &quot;raw-data&quot;)
+    |&gt; range(start: -task.every)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; aggregateWindow(every: task.every, fn: mean)
+    |&gt; set(key: &quot;_field&quot;, value: &quot;usage_user_avg&quot;)
+    |&gt; to(bucket: &quot;aggregated-5m&quot;)
+</code></pre>
+<pre><code class="language-bash"># 创建降采样 Task
+influx task create \
+    --org my-org \
+    --file downsample-5m.flux
+
+# 列出所有 Tasks
+influx task list --org my-org
+
+# 查看 Task 执行历史
+influx task log --task-id TASK_ID
+
+# 删除 Task
+influx task delete --id TASK_ID
+</code></pre>
+<h3>Python 创建 Task</h3>
+<pre><code class="language-python">from influxdb_client import InfluxDBClient
+from influxdb_client.domain.task import Task
+
+client = InfluxDBClient(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;your-token&quot;,
+    org=&quot;my-org&quot;
+)
+
+tasks_api = client.tasks_api()
+
+# Task Flux 脚本
+flux_script = &#39;&#39;&#39;
+option task = {
+    name: &quot;downsample-cpu-5m&quot;,
+    every: 5m,
+}
+
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -task.every)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot; or r._field == &quot;usage_system&quot;)
+    |&gt; aggregateWindow(every: task.every, fn: mean)
+    |&gt; to(bucket: &quot;monitoring-5m&quot;)
+&#39;&#39;&#39;
+
+# 创建 Task
+task = Task(
+    org_id=&quot;your-org-id&quot;,
+    name=&quot;downsample-cpu-5m&quot;,
+    flux=flux_script,
+    every=&quot;5m&quot;
+)
+
+created_task = tasks_api.create_task(task)
+print(f&quot;Task created: {created_task.id}&quot;)
+</code></pre>
+<h2>存储优化策略</h2>
+<h3>分层存储架构</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Tier1[&quot;第1层: 热数据&quot;]
+        T1[&quot;Bucket: hot\n保留: 7天\n精度: 10s\n用途: 实时监控&quot;]
+    end
+    
+    subgraph Tier2[&quot;第2层: 温数据&quot;]
+        T2[&quot;Bucket: warm\n保留: 30天\n精度: 5m\n用途: 趋势分析&quot;]
+    end
+    
+    subgraph Tier3[&quot;第3层: 冷数据&quot;]
+        T3[&quot;Bucket: cold\n保留: 1年\n精度: 1h\n用途: 历史报告&quot;]
+    end
+    
+    subgraph Tier4[&quot;第4层: 归档&quot;]
+        T4[&quot;外部存储\nS3/Glacier\n永久保留\n合规需求&quot;]
+    end
+    
+    T1 --&gt;|降采样| T2
+    T2 --&gt;|降采样| T3
+    T3 --&gt;|导出| T4
+    
+    style Tier1 fill:#ffebee
+    style Tier2 fill:#fff3e0
+    style Tier3 fill:#e8f5e9
+    style Tier4 fill:#e3f2fd
+</code></pre>
+<h3>成本对比</h3>
+<pre><code class="language-mermaid">xychart-beta
+    title &quot;存储成本 vs 保留时间&quot;
+    x-axis [&quot;7天&quot;, &quot;30天&quot;, &quot;90天&quot;, &quot;1年&quot;, &quot;2年&quot;]
+    y-axis &quot;相对存储成本&quot;
+    bar [10, 20, 35, 60, 100]
+    line [10, 20, 35, 60, 100]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>存储量</th>
+<th>成本/月</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>仅7天原始</td>
+<td>100GB</td>
+<td>$50</td>
+<td>开发测试</td>
+</tr>
+<tr>
+<td>7天原始 + 30天聚合</td>
+<td>30GB</td>
+<td>$20</td>
+<td>生产监控</td>
+</tr>
+<tr>
+<td>分层存储</td>
+<td>50GB</td>
+<td>$30</td>
+<td>企业应用</td>
+</tr>
+<tr>
+<td>全部永久</td>
+<td>2TB+</td>
+<td>$500+</td>
+<td>合规要求</td>
+</tr>
+</tbody></table>
+<h2>实战配置</h2>
+<h3>场景：微服务监控</h3>
+<pre><code class="language-bash">#!/bin/bash
+# setup-monitoring.sh
+
+ORG=&quot;my-company&quot;
+
+# 1. 创建热数据 Bucket (实时监控)
+influx bucket create \
+    --name &quot;hot-metrics&quot; \
+    --retention 7d \
+    --org $ORG
+
+# 2. 创建温数据 Bucket (趋势分析)
+influx bucket create \
+    --name &quot;warm-metrics&quot; \
+    --retention 30d \
+    --org $ORG
+
+# 3. 创建冷数据 Bucket (长期存档)
+influx bucket create \
+    --name &quot;cold-metrics&quot; \
+    --retention 365d \
+    --org $ORG
+
+echo &quot;Buckets created!&quot;
+</code></pre>
+<pre><code class="language-flux">// hot-to-warm.flux - 降采样 Task
+option task = {
+    name: &quot;hot-to-warm-downsample&quot;,
+    every: 5m,
+}
+
+from(bucket: &quot;hot-metrics&quot;)
+    |&gt; range(start: -10m)
+    |&gt; filter(fn: (r) =&gt; r._measurement =~ /^cpu|memory|disk$/)
+    |&gt; aggregateWindow(
+        every: 5m,
+        fn: mean,
+        createEmpty: false
+    )
+    |&gt; to(bucket: &quot;warm-metrics&quot;)
+</code></pre>
+<pre><code class="language-flux">// warm-to-cold.flux - 二次降采样
+option task = {
+    name: &quot;warm-to-cold-downsample&quot;,
+    every: 1h,
+}
+
+from(bucket: &quot;warm-metrics&quot;)
+    |&gt; range(start: -2h)
+    |&gt; filter(fn: (r) =&gt; r._measurement =~ /^cpu|memory|disk$/)
+    |&gt; aggregateWindow(
+        every: 1h,
+        fn: mean,
+        createEmpty: false
+    )
+    |&gt; to(bucket: &quot;cold-metrics&quot;)
+</code></pre>
+<h3>场景：IoT 数据管理</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph IoT[&quot;IoT 数据流&quot;]
+        Devices[&quot;设备\n10000台&quot;] --&gt; Edge[&quot;边缘网关&quot;]
+        Edge --&gt;|写入| Hot[(&quot;Hot Bucket\n24h 保留&quot;)]
+        Hot --&gt;|1分钟聚合| Warm[(&quot;Warm Bucket\n30天 保留&quot;)]
+        Warm --&gt;|15分钟聚合| Cold[(&quot;Cold Bucket\n1年 保留&quot;)]
+    end
+    
+    subgraph Stats[&quot;数据量统计&quot;]
+        S1[&quot;原始: 8.64亿点/天&quot;]
+        S2[&quot;1分钟: 1440万点/天&quot;]
+        S3[&quot;15分钟: 96万点/天&quot;]
+    end
+    
+    Hot --&gt; S1
+    Warm --&gt; S2
+    Cold --&gt; S3
+</code></pre>
+<pre><code class="language-flux">// iot-downsample.flux
+option task = {
+    name: &quot;iot-1m-rollup&quot;,
+    every: 1m,
+}
+
+from(bucket: &quot;iot-raw&quot;)
+    |&gt; range(start: -2m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;sensor_data&quot;)
+    |&gt; pivot(
+        rowKey:[&quot;_time&quot;, &quot;device_id&quot;],
+        columnKey: [&quot;_field&quot;],
+        valueColumn: &quot;_value&quot;
+    )
+    |&gt; group(columns: [&quot;device_id&quot;])
+    |&gt; aggregateWindow(
+        every: 1m,
+        fn: {
+            temperature: mean,
+            humidity: mean,
+            pressure: mean
+        }
+    )
+    |&gt; to(bucket: &quot;iot-1m&quot;)
+</code></pre>
+<h2>监控与告警</h2>
+<h3>存储使用监控</h3>
+<pre><code class="language-flux">// 监控 Bucket 存储使用量
+import &quot;influxdata/influxdb/monitor&quot;
+
+from(bucket: &quot;_monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;storage_bucket_measurement_num&quot;)
+    |&gt; group(columns: [&quot;bucket&quot;])
+    |&gt; aggregateWindow(every: 5m, fn: last)
+    |&gt; monitor.check(
+        crit: (r) =&gt; r._value &gt; 100000000,  // 1亿点告警
+        messageFn: (r) =&gt; &quot;Bucket ${r.bucket} has ${r._value} points&quot;
+    )
+</code></pre>
+<h3>过期预警</h3>
+<pre><code class="language-python"># 检查即将过期的数据
+from influxdb_client import InfluxDBClient
+from datetime import datetime, timedelta
+
+client = InfluxDBClient(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;your-token&quot;
+)
+
+query_api = client.query_api()
+
+# 查询各 Bucket 的最早数据时间
+query = &#39;&#39;&#39;
+from(bucket: &quot;{bucket}&quot;)
+    |&gt; range(start: -1y)
+    |&gt; first()
+    |&gt; keep(columns: [&quot;_time&quot;])
+&#39;&#39;&#39;
+
+buckets = [&quot;hot-metrics&quot;, &quot;warm-metrics&quot;, &quot;cold-metrics&quot;]
+retention_days = [7, 30, 365]
+
+for bucket, retention in zip(buckets, retention_days):
+    try:
+        tables = query_api.query(query.format(bucket=bucket))
+        for table in tables:
+            for record in table.records:
+                oldest = record.get_time()
+                expires = oldest + timedelta(days=retention)
+                days_until_expiry = (expires - datetime.now()).days
+                
+                if days_until_expiry &lt; 7:
+                    print(f&quot;⚠️ {bucket}: 数据将在 {days_until_expiry} 天后开始过期&quot;)
+                else:
+                    print(f&quot;✅ {bucket}: 数据安全，还有 {days_until_expiry} 天&quot;)
+    except Exception as e:
+        print(f&quot;❌ {bucket}: 查询失败 - {e}&quot;)
+</code></pre>
+<h2>常见问题</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph FAQ[&quot;常见问题&quot;]
+        Q1[&quot;如何恢复误删数据?\n答案: 无法恢复，需定期备份&quot;]
+        Q2[&quot;RP 修改后旧数据怎么办?\n答案: 按新策略处理&quot;]
+        Q3[&quot;如何查看数据占用空间?\n答案: 使用 _monitoring bucket&quot;]
+        Q4[&quot;保留策略对性能影响?\n答案: 定期清理提升查询性能&quot;]
+    end
+    
+    style FAQ fill:#fff3e0
+</code></pre>
+<h3>问题 1：数据保留但想延长</h3>
+<pre><code class="language-bash"># 方案：导出后再导入到新 Bucket
+# 1. 导出即将过期的数据
+influx query &#39;from(bucket: &quot;old-bucket&quot;) |&gt; range(start: -7d)&#39; --raw &gt; backup.json
+
+# 2. 创建新 Bucket（更长保留）
+influx bucket create --name &quot;extended-bucket&quot; --retention 90d
+
+# 3. 重新导入（需要转换格式）
+# 使用 Python/脚本处理 Line Protocol 重新写入
+</code></pre>
+<h3>问题 2：误删数据恢复</h3>
+<pre><code class="language-bash"># 方案：从备份恢复
+# 1. 停止 InfluxDB
+systemctl stop influxdb
+
+# 2. 从备份恢复数据文件
+cp -r /backup/engine /var/lib/influxdb2/
+
+# 3. 重启
+systemctl start influxdb
+
+# ⚠️ 注意：定期备份是关键！
+</code></pre>
+<hr>
+<p>掌握保留策略后，下一篇将介绍认证与授权机制。</p>

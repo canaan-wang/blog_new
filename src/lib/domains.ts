@@ -128,6 +128,13 @@ export const categoriesByDomain: Record<string, Category[]> = {
       order: 3,
       domainSlug: "data-storage",
     },
+    {
+      slug: "influxdb",
+      title: "InfluxDB",
+      description: "时序数据库，数据写入、查询、监控与可视化",
+      order: 4,
+      domainSlug: "data-storage",
+    },
   ],
   "distributed-system": [
     {
@@ -289,6 +296,23 @@ export const groupsByCategory: Record<string, Group[]> = {
     { slug: "overview", title: "ES概述", categorySlug: "elasticsearch", order: 1 },
     { slug: "search", title: "搜索", categorySlug: "elasticsearch", order: 2 },
     { slug: "aggregation", title: "聚合", categorySlug: "elasticsearch", order: 3 },
+  ],
+  // InfluxDB 领域
+  "influxdb": [
+    { slug: "introduction", title: "入门介绍", categorySlug: "influxdb", order: 1 },
+    { slug: "installation", title: "安装部署", categorySlug: "influxdb", order: 2 },
+    { slug: "data-model", title: "数据模型", categorySlug: "influxdb", order: 3 },
+    { slug: "line-protocol", title: "Line Protocol", categorySlug: "influxdb", order: 4 },
+    { slug: "flux-query", title: "Flux 查询", categorySlug: "influxdb", order: 5 },
+    { slug: "influxql", title: "InfluxQL", categorySlug: "influxdb", order: 6 },
+    { slug: "retention-policies", title: "保留策略", categorySlug: "influxdb", order: 7 },
+    { slug: "continuous-queries", title: "连续查询", categorySlug: "influxdb", order: 8 },
+    { slug: "authentication", title: "认证授权", categorySlug: "influxdb", order: 9 },
+    { slug: "backup-restore", title: "备份恢复", categorySlug: "influxdb", order: 10 },
+    { slug: "monitoring", title: "监控集成", categorySlug: "influxdb", order: 11 },
+    { slug: "performance", title: "性能调优", categorySlug: "influxdb", order: 12 },
+    { slug: "telegraf", title: "Telegraf", categorySlug: "influxdb", order: 13 },
+    { slug: "grafana", title: "Grafana", categorySlug: "influxdb", order: 14 },
   ],
   // 微服务架构
   "microservices": [

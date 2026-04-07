@@ -1,0 +1,643 @@
+<h1>Telegraf 与 InfluxDB 集成实战</h1>
+<h2>Telegraf 概述</h2>
+<p>Telegraf 是 InfluxData 开发的开源<strong>数据采集代理</strong>，用 Go 语言编写，性能高、资源占用低。</p>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Inputs[&quot;输入插件 Inputs&quot;]
+        I1[&quot;系统指标\ncpu, mem, disk&quot;]
+        I2[&quot;服务监控\nnginx, mysql, redis&quot;]
+        I3&quot;云服务商\nAWS, GCP, Azure&quot;]
+        I4[&quot;消息队列\nKafka, MQTT&quot;]
+        I5[&quot;自定义\nHTTP, Exec&quot;]
+    end
+    
+    subgraph Processing[&quot;处理 Processors&quot;]
+        P1[&quot;过滤 Filter&quot;]
+        P2[&quot;转换 Transform&quot;]
+        P3[&quot;聚合 Aggregate&quot;]
+        P4[&quot;装饰 Enrich&quot;]
+    end
+    
+    subgraph Outputs[&quot;输出插件 Outputs&quot;]
+        O1[&quot;InfluxDB&quot;]
+        O2[&quot;Prometheus&quot;]
+        O3[&quot;Kafka&quot;]
+        O4[&quot;文件&quot;]
+        O5[&quot;云服务&quot;]
+    end
+    
+    Inputs --&gt; Telegraf[(&quot;Telegraf\nAgent&quot;)]
+    Telegraf --&gt; Processing
+    Processing --&gt; Outputs
+    
+    style Telegraf fill:#e3f2fd
+</code></pre>
+<h2>安装部署</h2>
+<h3>多平台安装</h3>
+<pre><code class="language-bash"># Ubuntu/Debian
+wget -q https://repos.influxdata.com/influxdata-archive.key | \
+  gpg --dearmor | sudo tee /usr/share/keyrings/influxdb-archive-keyring.gpg &gt; /dev/null
+
+echo &quot;deb [signed-by=/usr/share/keyrings/influxdb-archive-keyring.gpg] \
+  https://repos.influxdata.com/debian stable main&quot; | \
+  sudo tee /etc/apt/sources.list.d/influxdb.list
+
+sudo apt-get update
+sudo apt-get install -y telegraf
+
+# CentOS/RHEL
+cat &lt;&lt;EOF | sudo tee /etc/yum.repos.d/influxdb.repo
+[influxdb]
+name = InfluxDB Repository
+baseurl = https://repos.influxdata.com/rhel/\$releasever/\$basearch/stable
+enabled = 1
+gpgcheck = 1
+gpgkey = https://repos.influxdata.com/influxdata-archive.key
+EOF
+
+sudo yum install -y telegraf
+
+# macOS
+brew install telegraf
+
+# Docker
+docker run -d \
+  --name telegraf \
+  --net host \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /etc/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro \
+  telegraf:latest
+</code></pre>
+<h3>配置结构</h3>
+<pre><code class="language-toml"># /etc/telegraf/telegraf.conf
+
+# 全局代理配置
+[agent]
+  interval = &quot;10s&quot;           # 采集间隔
+  round_interval = true      # 对齐到整点
+  metric_batch_size = 1000   # 批量大小
+  metric_buffer_limit = 10000 # 缓冲区大小
+  collection_jitter = &quot;0s&quot;   # 采集抖动
+  flush_interval = &quot;10s&quot;     # 刷新间隔
+  flush_jitter = &quot;0s&quot;        # 刷新抖动
+  precision = &quot;&quot;             # 时间精度
+  hostname = &quot;&quot;              # 主机名（空=自动）
+  omit_hostname = false      # 是否省略主机名
+
+# 输出插件
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://localhost:8086&quot;]
+  token = &quot;your-influxdb-token&quot;
+  organization = &quot;my-org&quot;
+  bucket = &quot;metrics&quot;
+
+# 输入插件
+[[inputs.cpu]]
+  percpu = true
+  totalcpu = true
+
+[[inputs.mem]]
+</code></pre>
+<h2>输入插件配置</h2>
+<h3>系统监控</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph SystemMetrics[&quot;系统指标采集&quot;]
+        CPU[&quot;CPU\n使用率/负载&quot;]
+        MEM[&quot;内存\n使用/交换&quot;]
+        DISK[&quot;磁盘\n空间/IO&quot;]
+        NET[&quot;网络\n流量/连接&quot;]
+        PROC[&quot;进程\n数量/状态&quot;]
+        TEMP[&quot;温度\n硬件传感器&quot;]
+    end
+    
+    SystemMetrics --&gt; Telegraf
+</code></pre>
+<pre><code class="language-toml"># system-metrics.conf
+
+[[inputs.cpu]]
+  percpu = true
+  totalcpu = true
+  collect_cpu_time = false
+  report_active = true
+
+[[inputs.mem]]
+
+[[inputs.disk]]
+  ignore_fs = [&quot;tmpfs&quot;, &quot;devtmpfs&quot;, &quot;devfs&quot;, &quot;iso9660&quot;, &quot;overlay&quot;]
+
+[[inputs.diskio]]
+
+[[inputs.net]]
+  interfaces = [&quot;eth*&quot;, &quot;ens*&quot;, &quot;enp*&quot;]
+  ignore_protocol_stats = false
+
+[[inputs.processes]]
+
+[[inputs.system]]
+
+[[inputs.kernel]]
+
+[[inputs.linux_sysctl_fs]]
+
+# 硬件温度 (需要 sensors 命令)
+[[inputs.sensors]]
+</code></pre>
+<h3>服务监控</h3>
+<pre><code class="language-toml"># services.conf
+
+# Nginx
+[[inputs.nginx]]
+  urls = [&quot;http://localhost/nginx_status&quot;]
+  response_timeout = &quot;5s&quot;
+
+# MySQL
+[[inputs.mysql]]
+  servers = [&quot;tcp(localhost:3306)/?tls=false&quot;]
+  metric_version = 2
+
+# Redis
+[[inputs.redis]]
+  servers = [&quot;tcp://localhost:6379&quot;]
+
+# PostgreSQL
+[[inputs.postgresql]]
+  address = &quot;host=localhost user=postgres password=secret sslmode=disable&quot;
+
+# MongoDB
+[[inputs.mongodb]]
+  servers = [&quot;mongodb://localhost:27017&quot;]
+
+# RabbitMQ
+[[inputs.rabbitmq]]
+  url = &quot;http://localhost:15672&quot;
+  username = &quot;admin&quot;
+  password = &quot;admin&quot;
+
+# Elasticsearch
+[[inputs.elasticsearch]]
+  servers = [&quot;http://localhost:9200&quot;]
+  local = true
+
+# Kafka
+[[inputs.kafka_consumer]]
+  brokers = [&quot;localhost:9092&quot;]
+  topics = [&quot;metrics&quot;]
+  consumer_group = &quot;telegraf&quot;
+</code></pre>
+<h3>云原生监控</h3>
+<pre><code class="language-toml"># kubernetes.conf
+
+# Kubernetes API 指标
+[[inputs.kubernetes]]
+  url = &quot;https://$HOSTIP:10250&quot;
+  bearer_token = &quot;/var/run/secrets/kubernetes.io/serviceaccount/token&quot;
+  insecure_skip_verify = true
+
+# Kube-state-metrics
+[[inputs.prometheus]]
+  urls = [&quot;http://kube-state-metrics.monitoring.svc:8080/metrics&quot;]
+  metric_version = 2
+  kubernetes_services = [&quot;kube-state-metrics&quot;]
+
+# cAdvisor
+[[inputs.cadvisor]]
+  url = &quot;http://localhost:8080&quot;
+
+# Docker
+[[inputs.docker]]
+  endpoint = &quot;unix:///var/run/docker.sock&quot;
+  gather_services = false
+  container_name_include = []
+  container_name_exclude = []
+  timeout = &quot;5s&quot;
+  perdevice = true
+  total = true
+</code></pre>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph K8sMetrics[&quot;K8s 监控数据流&quot;]
+        API[&quot;K8s API\nPod/Node状态&quot;]
+        KSM[&quot;Kube-state-metrics\n资源对象&quot;]
+        CAD[&quot;cAdvisor\n容器指标&quot;]
+        DOCKER[&quot;Docker\n运行时指标&quot;]
+    end
+    
+    subgraph TelegrafPod[&quot;Telegraf DaemonSet&quot;]
+        T[&quot;Telegraf Agent&quot;]
+    end
+    
+    subgraph Storage[&quot;存储&quot;]
+        Influx[(&quot;InfluxDB&quot;)]
+    end
+    
+    API --&gt; T
+    KSM --&gt; T
+    CAD --&gt; T
+    DOCKER --&gt; T
+    T --&gt; Influx
+</code></pre>
+<h2>输出插件配置</h2>
+<h3>InfluxDB 输出</h3>
+<pre><code class="language-toml"># influxdb-output.conf
+
+# InfluxDB 2.x
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://localhost:8086&quot;]
+  token = &quot;your-token&quot;
+  organization = &quot;my-org&quot;
+  bucket = &quot;metrics&quot;
+  bucket_tag = &quot;&quot;
+  exclude_bucket_tag = false
+  timeout = &quot;5s&quot;
+  
+  # 内容编码
+  content_encoding = &quot;gzip&quot;
+  
+  # 失败重试
+  max_retries = 3
+  
+  # 批量配置
+  metric_batch_size = 1000
+  metric_buffer_limit = 10000
+  flush_interval = &quot;10s&quot;
+  flush_jitter = &quot;5s&quot;
+
+# 多 Bucket 路由
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://localhost:8086&quot;]
+  token = &quot;system-token&quot;
+  organization = &quot;my-org&quot;
+  bucket = &quot;system-metrics&quot;
+  namepass = [&quot;cpu&quot;, &quot;mem&quot;, &quot;disk&quot;, &quot;diskio&quot;, &quot;net&quot;, &quot;system&quot;]
+
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://localhost:8086&quot;]
+  token = &quot;app-token&quot;
+  organization = &quot;my-org&quot;
+  bucket = &quot;app-metrics&quot;
+  namepass = [&quot;http_response&quot;, &quot;nginx&quot;, &quot;mysql&quot;]
+</code></pre>
+<h3>多输出配置</h3>
+<pre><code class="language-toml"># multi-output.conf
+
+# 主存储：InfluxDB
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://influxdb-primary:8086&quot;]
+  token = &quot;${INFLUX_TOKEN}&quot;
+  organization = &quot;my-org&quot;
+  bucket = &quot;metrics&quot;
+
+# 备份存储：InfluxDB 从节点
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://influxdb-replica:8086&quot;]
+  token = &quot;${INFLUX_TOKEN}&quot;
+  organization = &quot;my-org&quot;
+  bucket = &quot;metrics&quot;
+
+# 实时分析：Kafka
+[[outputs.kafka]]
+  brokers = [&quot;kafka:9092&quot;]
+  topic = &quot;metrics&quot;
+  data_format = &quot;influx&quot;
+
+# 归档：文件
+[[outputs.file]]
+  files = [&quot;/var/log/telegraf/metrics.out&quot;]
+  data_format = &quot;json&quot;
+  rotation_max_size = &quot;100MB&quot;
+  rotation_max_archives = 5
+</code></pre>
+<h2>数据处理</h2>
+<h3>过滤器</h3>
+<pre><code class="language-toml"># filtering.conf
+
+# 按名称过滤（只保留系统指标）
+[[inputs.cpu]]
+[[inputs.mem]]
+
+[[processors.override]]
+  namepass = [&quot;cpu&quot;, &quot;mem&quot;, &quot;disk&quot;, &quot;diskio&quot;, &quot;net&quot;, &quot;system&quot;]
+
+# 删除特定指标
+[[processors.drop]]
+  namepass = [&quot;unwanted_metric&quot;]
+
+# 按标签过滤
+[[processors.filter]]
+  [[processors.filter.tags]]
+    host = [&quot;test-*&quot;, &quot;localhost&quot;]
+
+# 按字段值过滤
+[[processors.filter]]
+  [[processors.filter.fields]]
+    usage_idle = { gt = 99.0 }
+</code></pre>
+<h3>转换器</h3>
+<pre><code class="language-toml"># transformation.conf
+
+# 重命名测量值
+[[processors.rename]]
+  [[processors.rename.replace]]
+    measurement = &quot;cpu&quot;
+    dest = &quot;cpu_usage&quot;
+
+# 重命名标签
+[[processors.rename]]
+  [[processors.rename.replace]]
+    tag = &quot;host&quot;
+    dest = &quot;hostname&quot;
+
+# 添加标签
+[[processors.override]]
+  [processors.override.tags]
+    datacenter = &quot;us-east-1&quot;
+    environment = &quot;production&quot;
+
+# 添加字段
+[[processors.converter]]
+  [processors.converter.tags]
+    string = [&quot;cpu&quot;]
+  [processors.converter.fields]
+    float = [&quot;usage*&quot;]
+
+# 计算新字段
+[[processors.starlark]]
+  source = &#39;&#39;&#39;
+def apply(metric):
+    # 计算非空闲 CPU 使用率
+    if &quot;usage_idle&quot; in metric.fields:
+        metric.fields[&quot;usage_total&quot;] = 100.0 - metric.fields[&quot;usage_idle&quot;]
+    return metric
+&#39;&#39;&#39;
+</code></pre>
+<h3>聚合器</h3>
+<pre><code class="language-toml"># aggregation.conf
+
+# 基本统计聚合
+[[aggregators.basicstats]]
+  period = &quot;30s&quot;
+  drop_original = false
+  stats = [&quot;mean&quot;, &quot;min&quot;, &quot;max&quot;, &quot;stdev&quot;, &quot;s2&quot;]
+
+# 百分位数聚合
+[[aggregators.percentile]]
+  period = &quot;30s&quot;
+  drop_original = false
+  percentiles = [50.0, 95.0, 99.0]
+
+# 直方图聚合
+[[aggregators.histogram]]
+  period = &quot;30s&quot;
+  drop_original = false
+  [[aggregators.histogram.config]]
+    measurement_name = &quot;cpu&quot;
+    buckets = [0.0, 50.0, 70.0, 85.0, 95.0, 100.0]
+
+# 去重聚合
+[[aggregators.final]]
+  period = &quot;5m&quot;
+  output_strategy = &quot;last&quot;
+</code></pre>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph ProcessingFlow[&quot;数据处理流程&quot;]
+        Raw[&quot;原始数据&quot;] --&gt; Filter[&quot;Filter\n过滤&quot;]
+        Filter --&gt; Transform[&quot;Transform\n转换&quot;]
+        Transform --&gt; Enrich[&quot;Enrich\n增强&quot;]
+        Enrich --&gt; Aggregate[&quot;Aggregate\n聚合&quot;]
+        Aggregate --&gt; Output[&quot;Output\n输出&quot;]
+    end
+    
+    style ProcessingFlow fill:#e8f5e9
+</code></pre>
+<h2>高级配置</h2>
+<h3>HTTP 输入插件</h3>
+<pre><code class="language-toml"># http-input.conf
+
+# 轮询 JSON API
+[[inputs.http]]
+  urls = [
+    &quot;http://api.example.com/metrics&quot;,
+    &quot;http://api2.example.com/status&quot;
+  ]
+  method = &quot;GET&quot;
+  timeout = &quot;5s&quot;
+  data_format = &quot;json&quot;
+  json_query = &quot;data.metrics&quot;
+  json_string_fields = [&quot;status&quot;, &quot;version&quot;]
+  json_name_key = &quot;metric_name&quot;
+  
+  # 认证
+  headers = {Authorization = &quot;Bearer token123&quot;}
+
+# Webhook 接收
+[[inputs.http_listener_v2]]
+  service_address = &quot;:8080&quot;
+  path = &quot;/telegraf&quot;
+  data_format = &quot;json&quot;
+  
+# Prometheus 抓取
+[[inputs.prometheus]]
+  urls = [&quot;http://localhost:9090/metrics&quot;]
+  metric_version = 2
+  kubernetes_services = [&quot;prometheus&quot;]
+</code></pre>
+<h3>自定义 Exec 插件</h3>
+<pre><code class="language-toml"># exec-input.conf
+
+[[inputs.exec]]
+  commands = [
+    &quot;/usr/local/bin/custom-metrics.sh&quot;,
+    &quot;python3 /opt/scripts/app-metrics.py&quot;
+  ]
+  timeout = &quot;5s&quot;
+  data_format = &quot;influx&quot;
+  interval = &quot;60s&quot;
+</code></pre>
+<pre><code class="language-python">#!/usr/bin/env python3
+# /opt/scripts/app-metrics.py
+# 输出 Line Protocol 格式
+
+import json
+import time
+
+metrics = {
+    &quot;custom_metric&quot;: {
+        &quot;host&quot;: &quot;server01&quot;,
+        &quot;region&quot;: &quot;us-west&quot;,
+        &quot;value&quot;: 42.0,
+        &quot;count&quot;: 100
+    }
+}
+
+# 生成 Line Protocol
+timestamp = int(time.time() * 1e9)
+print(f&quot;custom_app,host=server01,region=us-west value=42.0,count=100i {timestamp}&quot;)
+</code></pre>
+<h2>生产配置示例</h2>
+<h3>完整配置模板</h3>
+<pre><code class="language-toml"># /etc/telegraf/telegraf.d/production.conf
+
+[global_tags]
+  datacenter = &quot;us-east-1&quot;
+  environment = &quot;production&quot;
+  role = &quot;web-server&quot;
+
+[agent]
+  interval = &quot;10s&quot;
+  round_interval = true
+  metric_batch_size = 1000
+  metric_buffer_limit = 10000
+  collection_jitter = &quot;0s&quot;
+  flush_interval = &quot;10s&quot;
+  flush_jitter = &quot;5s&quot;
+  precision = &quot;&quot;
+  debug = false
+  quiet = false
+  logfile = &quot;/var/log/telegraf/telegraf.log&quot;
+  hostname = &quot;&quot;
+  omit_hostname = false
+
+# 系统监控
+[[inputs.cpu]]
+  percpu = true
+  totalcpu = true
+
+[[inputs.mem]]
+
+[[inputs.disk]]
+  ignore_fs = [&quot;tmpfs&quot;, &quot;devtmpfs&quot;]
+
+[[inputs.diskio]]
+
+[[inputs.net]]
+
+[[inputs.processes]]
+
+[[inputs.system]]
+
+# 应用监控
+[[inputs.nginx]]
+  urls = [&quot;http://localhost/nginx_status&quot;]
+
+[[inputs.mysql]]
+  servers = [&quot;tcp(localhost:3306)/?tls=false&quot;]
+
+# 数据处理
+[[processors.override]]
+  [processors.override.tags]
+    collected_by = &quot;telegraf&quot;
+
+[[aggregators.basicstats]]
+  period = &quot;30s&quot;
+  drop_original = false
+  stats = [&quot;mean&quot;, &quot;min&quot;, &quot;max&quot;]
+
+# 输出到 InfluxDB
+[[outputs.influxdb_v2]]
+  urls = [&quot;http://influxdb.monitoring.svc:8086&quot;]
+  token = &quot;${INFLUX_TOKEN}&quot;
+  organization = &quot;my-org&quot;
+  bucket = &quot;production-metrics&quot;
+  content_encoding = &quot;gzip&quot;
+</code></pre>
+<h3>Kubernetes 部署</h3>
+<pre><code class="language-yaml"># telegraf-daemonset.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: telegraf
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      name: telegraf
+  template:
+    metadata:
+      labels:
+        name: telegraf
+    spec:
+      containers:
+      - name: telegraf
+        image: telegraf:1.28-alpine
+        env:
+        - name: INFLUX_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-token
+              key: token
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: HOSTIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        volumeMounts:
+        - name: config
+          mountPath: /etc/telegraf
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        resources:
+          requests:
+            memory: &quot;128Mi&quot;
+            cpu: &quot;100m&quot;
+          limits:
+            memory: &quot;512Mi&quot;
+            cpu: &quot;500m&quot;
+      volumes:
+      - name: config
+        configMap:
+          name: telegraf-config
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      serviceAccountName: telegraf
+</code></pre>
+<h2>故障排查</h2>
+<h3>调试模式</h3>
+<pre><code class="language-bash"># 测试配置
+telegraf --config /etc/telegraf/telegraf.conf --test
+
+# 指定输入插件测试
+telegraf --config /etc/telegraf/telegraf.conf --input-filter cpu:mem --test
+
+# 调试模式运行
+telegraf --config /etc/telegraf/telegraf.conf --debug
+
+# 验证配置
+telegraf --config /etc/telegraf/telegraf.conf --config-directory /etc/telegraf/telegraf.d --test
+</code></pre>
+<h3>常见问题</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Issues[&quot;常见问题&quot;]
+        I1[&quot;无数据写入\n检查网络和认证&quot;]
+        I2[&quot;数据丢失\n增大缓冲区&quot;]
+        I3[&quot;高 CPU\n降低采集频率&quot;]
+        I4[&quot;内存泄漏\n检查插件配置&quot;]
+    end
+    
+    subgraph Solutions[&quot;解决方案&quot;]
+        S1[&quot;telnet 测试端口\n验证 Token&quot;]
+        S2[&quot;增加 buffer_limit\n启用磁盘缓存&quot;]
+        S3[&quot;调整 interval\n使用抖动&quot;]
+        S4[&quot;更新 Telegraf\n禁用问题插件&quot;]
+    end
+    
+    I1 --&gt; S1
+    I2 --&gt; S2
+    I3 --&gt; S3
+    I4 --&gt; S4
+</code></pre>
+<hr>
+<p>掌握 Telegraf 集成后，下一篇将介绍 Grafana 可视化。</p>

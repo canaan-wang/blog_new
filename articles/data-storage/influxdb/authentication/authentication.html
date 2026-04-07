@@ -1,0 +1,613 @@
+<h1>InfluxDB 认证与授权指南</h1>
+<h2>安全架构概览</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph SecurityLayers[&quot;安全层级&quot;]
+        L1[&quot;1. 传输安全\nTLS/SSL 加密&quot;]
+        L2[&quot;2. 认证层\nToken/API Key&quot;]
+        L3[&quot;3. 授权层\nRBAC 权限控制&quot;]
+        L4[&quot;4. 审计层\n操作日志记录&quot;]
+    end
+    
+    subgraph AccessControl[&quot;访问控制流程&quot;]
+        Client[&quot;客户端&quot;] --&gt;|HTTPS| TLS[&quot;TLS 终止&quot;]
+        TLS --&gt;|Token| Auth[&quot;认证检查&quot;]
+        Auth --&gt;|权限| RBAC[&quot;授权检查&quot;]
+        RBAC --&gt;|允许| DB[(&quot;数据库&quot;)]
+        RBAC --&gt;|拒绝| Error[&quot;返回 403&quot;]
+    end
+    
+    SecurityLayers --&gt; AccessControl
+    
+    style SecurityLayers fill:#e3f2fd
+</code></pre>
+<h2>InfluxDB 2.x 安全模型</h2>
+<h3>核心概念</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Entities[&quot;核心实体&quot;]
+        Org[&quot;Organization\n组织&quot;] --&gt;|包含| User[&quot;User\n用户&quot;]
+        Org --&gt;|包含| Bucket[&quot;Bucket\n存储桶&quot;]
+        User --&gt;|拥有| Token[&quot;Token\n访问令牌&quot;]
+        Token --&gt;|关联| Permission[&quot;Permission\n权限&quot;]
+        Permission --&gt;|作用于| Bucket
+    end
+    
+    style Entities fill:#e8f5e9
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>实体</th>
+<th>说明</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Organization</strong></td>
+<td>组织</td>
+<td>资源隔离的顶层边界</td>
+</tr>
+<tr>
+<td><strong>User</strong></td>
+<td>用户</td>
+<td>可以拥有多个 Token</td>
+</tr>
+<tr>
+<td><strong>Token</strong></td>
+<td>访问令牌</td>
+<td>API 认证凭证</td>
+</tr>
+<tr>
+<td><strong>Bucket</strong></td>
+<td>存储桶</td>
+<td>数据的实际存储</td>
+</tr>
+<tr>
+<td><strong>Permission</strong></td>
+<td>权限</td>
+<td>定义对资源的操作权限</td>
+</tr>
+</tbody></table>
+<h3>Token 类型</h3>
+<pre><code class="language-mermaid">pie title Token 类型分布
+    &quot;All-Access Token&quot; : 10
+    &quot;Operator Token&quot; : 5
+    &quot;Read/Write Token&quot; : 60
+    &quot;Read-Only Token&quot; : 25
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Token 类型</th>
+<th>权限</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Operator Token</strong></td>
+<td>全权限</td>
+<td>系统管理</td>
+</tr>
+<tr>
+<td><strong>All-Access Token</strong></td>
+<td>组织内全权限</td>
+<td>管理员操作</td>
+</tr>
+<tr>
+<td><strong>Read/Write Token</strong></td>
+<td>读写特定 Bucket</td>
+<td>应用写入</td>
+</tr>
+<tr>
+<td><strong>Read-Only Token</strong></td>
+<td>只读特定 Bucket</td>
+<td>报表查询</td>
+</tr>
+<tr>
+<td><strong>Custom Token</strong></td>
+<td>自定义权限</td>
+<td>特殊需求</td>
+</tr>
+</tbody></table>
+<h2>Token 管理</h2>
+<h3>CLI 管理 Token</h3>
+<pre><code class="language-bash"># 列出所有 Token
+influx auth list
+
+# 创建 All-Access Token
+influx auth create \
+    --user admin \
+    --all-access \
+    --description &quot;Admin Token&quot;
+
+# 创建只读 Token
+influx auth create \
+    --user app-reader \
+    --read-buckets \
+    --description &quot;Read-only for dashboards&quot;
+
+# 创建读写特定 Bucket 的 Token
+influx auth create \
+    --user app-writer \
+    --read-bucket BUCKET_ID \
+    --write-bucket BUCKET_ID \
+    --description &quot;App write token&quot;
+
+# 创建带自定义权限的 Token
+influx auth create \
+    --user limited-user \
+    --read-bucket MONITORING_BUCKET_ID \
+    --write-bucket LOGS_BUCKET_ID \
+    --read-dashboards \
+    --description &quot;Limited access token&quot;
+
+# 删除 Token
+influx auth delete --id AUTH_ID
+
+# 查看 Token 详情
+influx auth describe --id AUTH_ID
+</code></pre>
+<h3>Python 管理 Token</h3>
+<pre><code class="language-python">from influxdb_client import InfluxDBClient
+from influxdb_client.domain.authorization import Authorization
+from influxdb_client.domain.permission import Permission, PermissionResource
+
+client = InfluxDBClient(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;operator-token&quot;,
+    org=&quot;my-org&quot;
+)
+
+authorizations_api = client.authorizations_api()
+
+# 创建读写权限
+def create_rw_token(bucket_name, description):
+    # 获取 Bucket ID
+    buckets_api = client.buckets_api()
+    bucket = buckets_api.find_bucket_by_name(bucket_name)
+    
+    # 构建权限
+    read_resource = PermissionResource(
+        type=&quot;buckets&quot;,
+        id=bucket.id,
+        org_id=client.org
+    )
+    write_resource = PermissionResource(
+        type=&quot;buckets&quot;, 
+        id=bucket.id,
+        org_id=client.org
+    )
+    
+    permissions = [
+        Permission(action=&quot;read&quot;, resource=read_resource),
+        Permission(action=&quot;write&quot;, resource=write_resource)
+    ]
+    
+    # 创建 Token
+    auth = Authorization(
+        org_id=client.org,
+        permissions=permissions,
+        description=description
+    )
+    
+    created = authorizations_api.create_authorization(auth)
+    print(f&quot;Token created: {created.token}&quot;)
+    return created.token
+
+# 创建只读 Token
+def create_ro_token(bucket_name, description):
+    buckets_api = client.buckets_api()
+    bucket = buckets_api.find_bucket_by_name(bucket_name)
+    
+    read_resource = PermissionResource(
+        type=&quot;buckets&quot;,
+        id=bucket.id,
+        org_id=client.org
+    )
+    
+    permissions = [Permission(action=&quot;read&quot;, resource=read_resource)]
+    
+    auth = Authorization(
+        org_id=client.org,
+        permissions=permissions,
+        description=description
+    )
+    
+    created = authorizations_api.create_authorization(auth)
+    print(f&quot;Read-only token: {created.token}&quot;)
+    return created.token
+
+# 使用示例
+rw_token = create_rw_token(&quot;monitoring&quot;, &quot;App write access&quot;)
+ro_token = create_ro_token(&quot;monitoring&quot;, &quot;Grafana read access&quot;)
+
+# 列出所有 Token
+auths = authorizations_api.find_authorizations()
+for auth in auths.authorizations:
+    print(f&quot;{auth.description}: {auth.status} (ID: {auth.id})&quot;)
+</code></pre>
+<h2>权限模型</h2>
+<h3>资源类型</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Resources[&quot;InfluxDB 资源类型&quot;]
+        B[&quot;buckets\n存储桶&quot;]
+        D[&quot;dashboards\n仪表板&quot;]
+        T[&quot;tasks\n任务&quot;]
+        A[&quot;authorizations\n授权&quot;]
+        U[&quot;users\n用户&quot;]
+        O[&quot;orgs\n组织&quot;]
+        V[&quot;variables\n变量&quot;]
+        S[&quot;scrapers\n抓取器&quot;]
+        N[&quot;notificationRules\n通知规则&quot;]
+    end
+    
+    style Resources fill:#e3f2fd
+</code></pre>
+<h3>权限操作</h3>
+<table>
+<thead>
+<tr>
+<th>资源</th>
+<th>read</th>
+<th>write</th>
+<th>create</th>
+<th>delete</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>buckets</td>
+<td>✅ 读取数据</td>
+<td>✅ 写入数据</td>
+<td>✅ 创建 Bucket</td>
+<td>✅ 删除 Bucket</td>
+</tr>
+<tr>
+<td>dashboards</td>
+<td>✅ 查看</td>
+<td>-</td>
+<td>✅ 创建</td>
+<td>✅ 删除</td>
+</tr>
+<tr>
+<td>tasks</td>
+<td>✅ 查看</td>
+<td>✅ 修改</td>
+<td>✅ 创建</td>
+<td>✅ 删除</td>
+</tr>
+<tr>
+<td>authorizations</td>
+<td>✅ 查看</td>
+<td>-</td>
+<td>✅ 创建 Token</td>
+<td>✅ 删除 Token</td>
+</tr>
+</tbody></table>
+<h3>权限配置示例</h3>
+<pre><code class="language-bash"># 1. 创建应用写入权限（仅写入特定 bucket）
+influx auth create \
+    --user app-service \
+    --write-bucket MONITORING_BUCKET \
+    --description &quot;App service - write only&quot;
+
+# 2. 创建报表读取权限（只读 + 查看 Dashboard）
+influx auth create \
+    --user report-reader \
+    --read-bucket MONITORING_BUCKET \
+    --read-dashboards \
+    --description &quot;Report service - read only&quot;
+
+# 3. 创建运维管理权限（除用户管理外）
+influx auth create \
+    --user ops-team \
+    --read-buckets --write-buckets \
+    --read-tasks --write-tasks \
+    --read-dashboards --write-dashboards \
+    --read-notificationRules --write-notificationRules \
+    --description &quot;Ops team - full resource access&quot;
+</code></pre>
+<h2>TLS/SSL 配置</h2>
+<h3>生成自签名证书</h3>
+<pre><code class="language-bash"># 创建证书目录
+mkdir -p /etc/influxdb/ssl
+cd /etc/influxdb/ssl
+
+# 生成私钥
+openssl genrsa -out influxdb.key 2048
+
+# 生成 CSR
+openssl req -new -key influxdb.key -out influxdb.csr \
+    -subj &quot;/C=CN/ST=Beijing/L=Beijing/O=MyOrg/CN=influxdb.example.com&quot;
+
+# 生成自签名证书
+openssl x509 -req -in influxdb.csr -signkey influxdb.key \
+    -out influxdb.crt -days 365
+
+# 合并为 PEM
+openssl x509 -in influxdb.crt -noout -text
+cat influxdb.crt influxdb.key &gt; influxdb.pem
+
+# 设置权限
+chmod 600 influxdb.key influxdb.pem
+chown influxdb:influxdb influxdb.*
+</code></pre>
+<h3>Docker TLS 配置</h3>
+<pre><code class="language-yaml"># docker-compose.tls.yml
+version: &#39;3.8&#39;
+
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb-ssl
+    restart: unless-stopped
+    ports:
+      - &quot;8086:8086&quot;
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${ADMIN_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=my-org
+      - DOCKER_INFLUXDB_INIT_BUCKET=default
+      # TLS 配置
+      - INFLUXDB_HTTP_HTTPS_ENABLED=true
+      - INFLUXDB_HTTP_HTTPS_CERTIFICATE=/etc/ssl/influxdb.crt
+      - INFLUXDB_HTTP_HTTPS_PRIVATE_KEY=/etc/ssl/influxdb.key
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - ./ssl/influxdb.crt:/etc/ssl/influxdb.crt:ro
+      - ./ssl/influxdb.key:/etc/ssl/influxdb.key:ro
+
+volumes:
+  influxdb-data:
+</code></pre>
+<h3>systemd 服务 TLS 配置</h3>
+<pre><code class="language-bash"># /etc/default/influxdb2
+INFLUXD_TLS_CERT=/etc/influxdb/ssl/influxdb.crt
+INFLUXD_TLS_KEY=/etc/influxdb/ssl/influxdb.key
+</code></pre>
+<h2>安全最佳实践</h2>
+<h3>Token 管理策略</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Strategy[&quot;Token 管理策略&quot;]
+        S1[&quot;1. 最小权限\n按需分配&quot;]
+        S2[&quot;2. 定期轮换\n30-90天&quot;]
+        S3[&quot;3. 分离职责\n读写分离&quot;]
+        S4[&quot;4. 安全存储\n密钥管理器&quot;]
+        S5[&quot;5. 监控审计\n异常检测&quot;]
+    end
+    
+    subgraph Implementation[&quot;实施建议&quot;]
+        I1[&quot;使用 Vault/KMS&quot;]
+        I2[&quot;环境变量注入&quot;]
+        I3[&quot;禁止硬编码&quot;]
+        I4[&quot;定期扫描代码&quot;]
+    end
+    
+    Strategy --&gt; Implementation
+    
+    style Strategy fill:#e8f5e9
+</code></pre>
+<h3>Token 命名规范</h3>
+<pre><code class="language-bash"># 环境+用途+权限级别 命名格式
+# [env]-[service]-[permission]-[date]
+
+# 示例：
+prod-api-rw-20240115     # 生产 API 读写
+prod-grafana-ro-20240115 # 生产 Grafana 只读
+dev-app-rw-20240115      # 开发环境应用读写
+staging-test-rw-20240115 # 测试环境读写
+</code></pre>
+<h3>安全清单</h3>
+<pre><code class="language-markdown">## InfluxDB 安全部署清单
+
+### 传输安全
+- [ ] 启用 TLS/SSL
+- [ ] 配置强加密套件
+- [ ] 禁用不安全的 HTTP
+- [ ] 证书定期更新
+
+### 认证授权
+- [ ] 禁用匿名访问
+- [ ] 创建最小权限 Token
+- [ ] 分离读写 Token
+- [ ] 定期轮换 Token
+- [ ] 删除未使用 Token
+
+### 网络安全
+- [ ] 防火墙限制访问
+- [ ] 使用 VPC/私有网络
+- [ ] 禁用公网访问（生产）
+- [ ] 配置反向代理
+
+### 审计监控
+- [ ] 启用访问日志
+- [ ] 配置异常告警
+- [ ] 定期审计权限
+- [ ] 备份安全配置
+</code></pre>
+<h2>实战：多租户权限隔离</h2>
+<h3>场景：SaaS 监控平台</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Org1[&quot;客户 A Organization&quot;]
+        U1[&quot;用户: admin-a&quot;]
+        T1[&quot;Token: rw-a&quot;]
+        B1[&quot;Bucket: metrics-a&quot;]
+    end
+    
+    subgraph Org2[&quot;客户 B Organization&quot;]
+        U2[&quot;用户: admin-b&quot;]
+        T2[&quot;Token: rw-b&quot;]
+        B2[&quot;Bucket: metrics-b&quot;]
+    end
+    
+    subgraph Platform[&quot;平台层&quot;]
+        OP[&quot;Operator\n跨组织管理&quot;]
+        OT[&quot;Token: operator&quot;]
+    end
+    
+    U1 --&gt; T1 --&gt;|读写| B1
+    U2 --&gt; T2 --&gt;|读写| B2
+    OP --&gt; OT --&gt;|管理| Org1
+    OP --&gt; OT --&gt;|管理| Org2
+    
+    style Org1 fill:#e3f2fd
+    style Org2 fill:#e8f5e9
+    style Platform fill:#fff3e0
+</code></pre>
+<h3>自动化配置脚本</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;
+InfluxDB 多租户权限初始化脚本
+&quot;&quot;&quot;
+import argparse
+from influxdb_client import InfluxDBClient
+from influxdb_client.domain.organization import Organization
+from influxdb_client.domain.user import User
+from influxdb_client.domain.authorization import Authorization
+from influxdb_client.domain.permission import Permission, PermissionResource
+
+class InfluxDBMultiTenant:
+    def __init__(self, url, token):
+        self.client = InfluxDBClient(url=url, token=token)
+        self.orgs_api = self.client.organizations_api()
+        self.users_api = self.client.users_api()
+        self.buckets_api = self.client.buckets_api()
+        self.auth_api = self.client.authorizations_api()
+    
+    def create_tenant(self, tenant_name, admin_email):
+        &quot;&quot;&quot;创建新租户（Organization）&quot;&quot;&quot;
+        # 1. 创建 Organization
+        org = Organization(name=tenant_name)
+        created_org = self.orgs_api.create_organization(org)
+        print(f&quot;✅ Created organization: {tenant_name} (ID: {created_org.id})&quot;)
+        
+        # 2. 创建 Bucket
+        bucket = self.buckets_api.create_bucket(
+            bucket_name=f&quot;{tenant_name}-metrics&quot;,
+            org_id=created_org.id,
+            retention_rules=[{&quot;everySeconds&quot;: 7 * 24 * 60 * 60}]  # 7天
+        )
+        print(f&quot;✅ Created bucket: {bucket.name}&quot;)
+        
+        # 3. 创建用户
+        user = User(name=admin_email)
+        created_user = self.users_api.create_user(user)
+        print(f&quot;✅ Created user: {admin_email}&quot;)
+        
+        # 4. 创建读写 Token
+        read_resource = PermissionResource(
+            type=&quot;buckets&quot;, id=bucket.id, org_id=created_org.id
+        )
+        permissions = [
+            Permission(action=&quot;read&quot;, resource=read_resource),
+            Permission(action=&quot;write&quot;, resource=read_resource)
+        ]
+        
+        auth = Authorization(
+            org_id=created_org.id,
+            user_id=created_user.id,
+            permissions=permissions,
+            description=f&quot;{tenant_name} admin access&quot;
+        )
+        
+        created_auth = self.auth_api.create_authorization(auth)
+        print(f&quot;✅ Created token: {created_auth.token}&quot;)
+        
+        return {
+            &#39;org_id&#39;: created_org.id,
+            &#39;bucket_id&#39;: bucket.id,
+            &#39;user_id&#39;: created_user.id,
+            &#39;token&#39;: created_auth.token
+        }
+    
+    def create_service_account(self, org_id, bucket_ids, permissions_desc):
+        &quot;&quot;&quot;创建服务账号 Token&quot;&quot;&quot;
+        permissions = []
+        
+        for bucket_id in bucket_ids:
+            resource = PermissionResource(type=&quot;buckets&quot;, id=bucket_id, org_id=org_id)
+            
+            if &#39;read&#39; in permissions_desc:
+                permissions.append(Permission(action=&quot;read&quot;, resource=resource))
+            if &#39;write&#39; in permissions_desc:
+                permissions.append(Permission(action=&quot;write&quot;, resource=resource))
+        
+        auth = Authorization(
+            org_id=org_id,
+            permissions=permissions,
+            description=f&quot;Service account - {permissions_desc}&quot;
+        )
+        
+        created = self.auth_api.create_authorization(auth)
+        return created.token
+    
+    def revoke_all_user_tokens(self, user_id):
+        &quot;&quot;&quot;撤销用户所有 Token（离职场景）&quot;&quot;&quot;
+        auths = self.auth_api.find_authorizations()
+        revoked = 0
+        
+        for auth in auths.authorizations:
+            if auth.user_id == user_id:
+                self.auth_api.delete_authorization(auth.id)
+                revoked += 1
+                print(f&quot;🚫 Revoked token: {auth.id}&quot;)
+        
+        print(f&quot;✅ Total revoked: {revoked}&quot;)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=&#39;InfluxDB Multi-Tenant Manager&#39;)
+    parser.add_argument(&#39;--url&#39;, default=&#39;http://localhost:8086&#39;, help=&#39;InfluxDB URL&#39;)
+    parser.add_argument(&#39;--token&#39;, required=True, help=&#39;Operator Token&#39;)
+    parser.add_argument(&#39;--action&#39;, choices=[&#39;create-tenant&#39;, &#39;revoke-user&#39;], required=True)
+    parser.add_argument(&#39;--tenant-name&#39;, help=&#39;Tenant name&#39;)
+    parser.add_argument(&#39;--admin-email&#39;, help=&#39;Admin email&#39;)
+    parser.add_argument(&#39;--user-id&#39;, help=&#39;User ID to revoke&#39;)
+    
+    args = parser.parse_args()
+    
+    manager = InfluxDBMultiTenant(args.url, args.token)
+    
+    if args.action == &#39;create-tenant&#39;:
+        result = manager.create_tenant(args.tenant_name, args.admin_email)
+        print(&quot;\n📋 Tenant Configuration:&quot;)
+        print(f&quot;Token (save this!): {result[&#39;token&#39;]}&quot;)
+        print(f&quot;Org ID: {result[&#39;org_id&#39;]}&quot;)
+        print(f&quot;Bucket ID: {result[&#39;bucket_id&#39;]}&quot;)
+    
+    elif args.action == &#39;revoke-user&#39;:
+        manager.revoke_all_user_tokens(args.user_id)
+
+
+if __name__ == &#39;__main__&#39;:
+    main()
+</code></pre>
+<h2>审计与监控</h2>
+<h3>启用审计日志</h3>
+<pre><code class="language-bash"># InfluxDB 2.x 配置审计日志
+export INFLUXDB_HTTP_ACCESS_LOG_PATH=/var/log/influxdb/access.log
+export INFLUXDB_HTTP_ACCESS_LOG_STATUS_FILTERS=4xx,5xx
+
+# 或者配置文件方式
+cat &gt; /etc/influxdb/config.yml &lt;&lt; EOF
+http-access-log-path: /var/log/influxdb/access.log
+http-access-log-status-filters: [&quot;4xx&quot;, &quot;5xx&quot;]
+EOF
+</code></pre>
+<h3>异常访问检测</h3>
+<pre><code class="language-flux">// 检测异常查询频率
+import &quot;influxdata/influxdb/monitor&quot;
+
+from(bucket: &quot;_monitoring&quot;)
+    |&gt; range(start: -5m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;http_request&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;request_count&quot;)
+    |&gt; group(columns: [&quot;auth_id&quot;])
+    |&gt; aggregateWindow(every: 1m, fn: sum)
+    |&gt; monitor.check(
+        crit: (r) =&gt; r._value &gt; 10000,  // 每分钟超过10000请求
+        warn: (r) =&gt; r._value &gt; 5000,
+        messageFn: (r) =&gt; &quot;High request rate from ${r.auth_id}: ${r._value}/min&quot;
+    )
+</code></pre>
+<hr>
+<p>掌握认证授权后，下一篇将介绍备份与恢复策略。</p>

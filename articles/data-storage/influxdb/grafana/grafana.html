@@ -1,0 +1,533 @@
+<h1>Grafana 与 InfluxDB 可视化实战</h1>
+<h2>Grafana + InfluxDB 架构</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph DataSources[&quot;数据源&quot;]
+        I1[(&quot;InfluxDB 2.x\nFlux Query&quot;)]
+        I2[(&quot;InfluxDB 1.x\nInfluxQL&quot;)]
+        Other[&quot;Prometheus\nMySQL\nElasticsearch&quot;]
+    end
+    
+    subgraph Grafana[&quot;Grafana 平台&quot;]
+        Query[&quot;查询编辑器&quot;]
+        Viz[&quot;可视化面板&quot;]
+        Dash[&quot;仪表板&quot;]
+        Alert[&quot;告警系统&quot;]
+    end
+    
+    subgraph Users[&quot;用户&quot;]
+        Browser[&quot;Web 浏览器&quot;]
+        Mobile[&quot;移动设备&quot;]
+        Share[&quot;分享/嵌入&quot;]
+    end
+    
+    DataSources --&gt; Query
+    Query --&gt; Viz
+    Viz --&gt; Dash
+    Dash --&gt; Users
+    Alert --&gt;|通知| Users
+    
+    style Grafana fill:#e3f2fd
+</code></pre>
+<h2>数据源配置</h2>
+<h3>InfluxDB 2.x 数据源</h3>
+<pre><code class="language-mermaid">flowchart LR
+    A[&quot;Grafana&quot;] --&gt;|HTTP| B[&quot;InfluxDB API&quot;]
+    B --&gt;|Flux| C[&quot;数据查询&quot;]
+    C --&gt;|JSON| A
+</code></pre>
+<p><strong>配置步骤：</strong></p>
+<ol>
+<li><strong>访问 Grafana</strong> → Configuration → Data Sources</li>
+<li><strong>Add data source</strong> → InfluxDB</li>
+<li><strong>配置参数：</strong></li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Query Language</td>
+<td>Flux</td>
+<td>使用 Flux 查询</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><a href="http://influxdb:8086">http://influxdb:8086</a></td>
+<td>InfluxDB 地址</td>
+</tr>
+<tr>
+<td>Organization</td>
+<td>my-org</td>
+<td>组织名称</td>
+</tr>
+<tr>
+<td>Token</td>
+<td>your-token</td>
+<td>All-Access Token</td>
+</tr>
+<tr>
+<td>Default Bucket</td>
+<td>metrics</td>
+<td>默认 Bucket</td>
+</tr>
+</tbody></table>
+<h3>连接测试</h3>
+<pre><code class="language-flux">// 测试查询
+from(bucket: &quot;metrics&quot;)
+    |&gt; range(start: -1h)
+    |&gt; limit(n: 1)
+</code></pre>
+<h2>查询编辑器</h2>
+<h3>Flux 查询模式</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph QueryBuilder[&quot;查询构建器&quot;]
+        B[&quot;选择 Bucket&quot;]
+        M[&quot;选择 Measurement&quot;]
+        F[&quot;选择 Fields&quot;]
+        T[&quot;过滤 Tags&quot;]
+        W[&quot;时间范围&quot;]
+        A[&quot;聚合函数&quot;]
+    end
+    
+    B --&gt; M --&gt; F --&gt; T --&gt; W --&gt; A
+</code></pre>
+<p><strong>基础查询示例：</strong></p>
+<pre><code class="language-flux">// CPU 使用率趋势
+from(bucket: &quot;system-metrics&quot;)
+    |&gt; range(start: v.timeRangeStart, stop: v.timeRangeStop)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; aggregateWindow(every: v.windowPeriod, fn: mean)
+    |&gt; group(columns: [&quot;host&quot;])
+</code></pre>
+<h3>模板变量</h3>
+<pre><code class="language-flux">// 主机变量查询
+import &quot;influxdata/influxdb/schema&quot;
+schema.tagValues(bucket: &quot;system-metrics&quot;, tag: &quot;host&quot;)
+
+// 使用变量
+from(bucket: &quot;system-metrics&quot;)
+    |&gt; range(start: v.timeRangeStart)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r.host =~ /^${host:regex}$/)
+</code></pre>
+<p><strong>变量配置：</strong></p>
+<table>
+<thead>
+<tr>
+<th>变量名</th>
+<th>类型</th>
+<th>查询</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>host</td>
+<td>Query</td>
+<td><code>tagValues(bucket: &quot;metrics&quot;, tag: &quot;host&quot;)</code></td>
+</tr>
+<tr>
+<td>interval</td>
+<td>Interval</td>
+<td><code>1m,5m,10m,30m,1h,6h,12h,1d</code></td>
+</tr>
+<tr>
+<td>datasource</td>
+<td>Datasource</td>
+<td>InfluxDB</td>
+</tr>
+</tbody></table>
+<h3>动态面板</h3>
+<pre><code class="language-flux">// 多主机对比
+from(bucket: &quot;system-metrics&quot;)
+    |&gt; range(start: v.timeRangeStart)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r.host =~ /^${host:regex}$/)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; aggregateWindow(every: ${interval}, fn: mean)
+</code></pre>
+<h2>可视化面板</h2>
+<h3>常用面板类型</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Panels[&quot;面板类型选择&quot;]
+        T[&quot;Time Series\n时序图&quot;]
+        G[&quot;Gauge\n仪表盘&quot;]
+        S[&quot;Stat\n统计值&quot;]
+        H[&quot;Heatmap\n热力图&quot;]
+        B[&quot;Bar Chart\n柱状图&quot;]
+        TB[&quot;Table\n表格&quot;]
+        L[&quot;Logs\n日志&quot;]
+    end
+    
+    subgraph UseCases[&quot;适用场景&quot;]
+        C1[&quot;趋势监控&quot;]
+        C2[&quot;当前状态&quot;]
+        C3[&quot;Top N 排名&quot;]
+        C4[&quot;分布分析&quot;]
+    end
+    
+    T --&gt; C1
+    G --&gt; C2
+    S --&gt; C2
+    H --&gt; C4
+    B --&gt; C3
+</code></pre>
+<h3>时序图配置</h3>
+<pre><code class="language-json">{
+  &quot;type&quot;: &quot;timeseries&quot;,
+  &quot;title&quot;: &quot;CPU Usage by Host&quot;,
+  &quot;targets&quot;: [
+    {
+      &quot;query&quot;: &quot;from(bucket: \&quot;metrics\&quot;)\n  |\u003e range(start: v.timeRangeStart)\n  |\u003e filter(fn: (r) =\u003e r._measurement == \&quot;cpu\&quot;)\n  |\u003e filter(fn: (r) =\u003e r._field == \&quot;usage_user\&quot;)\n  |\u003e aggregateWindow(every: v.windowPeriod, fn: mean)\n  |\u003e group(columns: [\&quot;host\&quot;])&quot;,
+      &quot;refId&quot;: &quot;A&quot;
+    }
+  ],
+  &quot;fieldConfig&quot;: {
+    &quot;defaults&quot;: {
+      &quot;unit&quot;: &quot;percent&quot;,
+      &quot;min&quot;: 0,
+      &quot;max&quot;: 100,
+      &quot;thresholds&quot;: {
+        &quot;steps&quot;: [
+          {&quot;color&quot;: &quot;green&quot;, &quot;value&quot;: 0},
+          {&quot;color&quot;: &quot;yellow&quot;, &quot;value&quot;: 70},
+          {&quot;color&quot;: &quot;red&quot;, &quot;value&quot;: 85}
+        ]
+      }
+    }
+  },
+  &quot;options&quot;: {
+    &quot;legend&quot;: {&quot;displayMode&quot;: &quot;table&quot;, &quot;placement&quot;: &quot;right&quot;},
+    &quot;tooltip&quot;: {&quot;mode&quot;: &quot;multi&quot;}
+  }
+}
+</code></pre>
+<h3>仪表盘面板</h3>
+<pre><code class="language-json">{
+  &quot;type&quot;: &quot;gauge&quot;,
+  &quot;title&quot;: &quot;Current CPU Usage&quot;,
+  &quot;targets&quot;: [
+    {
+      &quot;query&quot;: &quot;from(bucket: \&quot;metrics\&quot;)\n  |\u003e range(start: -1m)\n  |\u003e filter(fn: (r) =\u003e r._measurement == \&quot;cpu\&quot;)\n  |\u003e filter(fn: (r) =\u003e r._field == \&quot;usage_user\&quot;)\n  |\u003e last()&quot;,
+      &quot;refId&quot;: &quot;A&quot;
+    }
+  ],
+  &quot;fieldConfig&quot;: {
+    &quot;defaults&quot;: {
+      &quot;unit&quot;: &quot;percent&quot;,
+      &quot;min&quot;: 0,
+      &quot;max&quot;: 100,
+      &quot;thresholds&quot;: {
+        &quot;mode&quot;: &quot;absolute&quot;,
+        &quot;steps&quot;: [
+          {&quot;color&quot;: &quot;green&quot;, &quot;value&quot;: 0},
+          {&quot;color&quot;: &quot;yellow&quot;, &quot;value&quot;: 70},
+          {&quot;color&quot;: &quot;red&quot;, &quot;value&quot;: 85}
+        ]
+      },
+      &quot;custom&quot;: {
+        &quot;neutral&quot;: 0
+      }
+    }
+  }
+}
+</code></pre>
+<h3>表格面板</h3>
+<pre><code class="language-flux">// Top 10 CPU 消耗进程
+topProcesses = from(bucket: &quot;system-metrics&quot;)
+    |&gt; range(start: -5m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;procstat&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;cpu_usage&quot;)
+    |&gt; group(columns: [&quot;process_name&quot;])
+    |&gt; mean()
+    |&gt; group()
+    |&gt; top(n: 10, columns: [&quot;_value&quot;])
+</code></pre>
+<h2>告警配置</h2>
+<h3>告警规则</h3>
+<pre><code class="language-yaml"># 告警规则配置
+groups:
+  - name: system-alerts
+    interval: 1m
+    rules:
+      - alert: HighCPUUsage
+        expr: |
+          from(bucket: &quot;metrics&quot;)
+            |&gt; range(start: -5m)
+            |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+            |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+            |&gt; aggregateWindow(every: 1m, fn: mean)
+            |&gt; filter(fn: (r) =&gt; r._value &gt; 85)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: &quot;High CPU usage on {{ $labels.host }}&quot;
+          description: &quot;CPU usage is above 85% for 5 minutes&quot;
+</code></pre>
+<h3>Grafana 告警</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph AlertFlow[&quot;告警流程&quot;]
+        Q[&quot;查询数据&quot;] --&gt; C[&quot;条件判断&quot;]
+        C --&gt;|满足| S[&quot;告警状态&quot;]
+        C --&gt;|不满足| N[&quot;正常状态&quot;]
+        S --&gt; N1[&quot;通知渠道&quot;]
+    end
+    
+    subgraph Channels[&quot;通知渠道&quot;]
+        Email[&quot;邮件&quot;]
+        Slack[&quot;Slack&quot;]
+        PagerDuty[&quot;PagerDuty&quot;]
+        Webhook[&quot;Webhook&quot;]
+    end
+    
+    N1 --&gt; Channels
+</code></pre>
+<p><strong>告警条件配置：</strong></p>
+<pre><code class="language-flux">// 内存告警查询
+from(bucket: &quot;system-metrics&quot;)
+    |&gt; range(start: -5m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;mem&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;used_percent&quot;)
+    |&gt; aggregateWindow(every: 1m, fn: mean)
+    |&gt; filter(fn: (r) =&gt; r._value &gt; 90)
+</code></pre>
+<p><strong>告警设置：</strong></p>
+<table>
+<thead>
+<tr>
+<th>设置</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Evaluate every</td>
+<td>1m</td>
+</tr>
+<tr>
+<td>For</td>
+<td>5m</td>
+</tr>
+<tr>
+<td>Condition</td>
+<td>WHEN avg() OF query(A, 5m, now) IS ABOVE 90</td>
+</tr>
+<tr>
+<td>No Data State</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>Error State</td>
+<td>Alerting</td>
+</tr>
+</tbody></table>
+<h2>仪表板设计</h2>
+<h3>布局原则</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph DashboardLayout[&quot;仪表板布局&quot;]
+        Row1[&quot;Row 1: 概览\n关键指标统计&quot;]
+        Row2[&quot;Row 2: 趋势\n时序图&quot;]
+        Row3[&quot;Row 3: 详情\n表格/热力图&quot;]
+    end
+    
+    subgraph GoldenSignals[&quot;黄金信号&quot;]
+        G1[&quot;延迟 Latency&quot;]
+        G2[&quot;流量 Traffic&quot;]
+        G3[&quot;错误 Errors&quot;]
+        G4[&quot;饱和度 Saturation&quot;]
+    end
+    
+    DashboardLayout --&gt; GoldenSignals
+</code></pre>
+<h3>系统监控仪表板</h3>
+<pre><code class="language-json">{
+  &quot;dashboard&quot;: {
+    &quot;title&quot;: &quot;System Monitoring&quot;,
+    &quot;tags&quot;: [&quot;influxdb&quot;, &quot;system&quot;],
+    &quot;timezone&quot;: &quot;browser&quot;,
+    &quot;schemaVersion&quot;: 36,
+    &quot;refresh&quot;: &quot;30s&quot;,
+    &quot;panels&quot;: [
+      {
+        &quot;id&quot;: 1,
+        &quot;title&quot;: &quot;CPU Usage&quot;,
+        &quot;type&quot;: &quot;timeseries&quot;,
+        &quot;gridPos&quot;: {&quot;h&quot;: 8, &quot;w&quot;: 12, &quot;x&quot;: 0, &quot;y&quot;: 0},
+        &quot;targets&quot;: [{&quot;query&quot;: &quot;CPU Query&quot;}]
+      },
+      {
+        &quot;id&quot;: 2,
+        &quot;title&quot;: &quot;Memory Usage&quot;,
+        &quot;type&quot;: &quot;timeseries&quot;,
+        &quot;gridPos&quot;: {&quot;h&quot;: 8, &quot;w&quot;: 12, &quot;x&quot;: 12, &quot;y&quot;: 0},
+        &quot;targets&quot;: [{&quot;query&quot;: &quot;Memory Query&quot;}]
+      },
+      {
+        &quot;id&quot;: 3,
+        &quot;title&quot;: &quot;Disk I/O&quot;,
+        &quot;type&quot;: &quot;graph&quot;,
+        &quot;gridPos&quot;: {&quot;h&quot;: 8, &quot;w&quot;: 24, &quot;x&quot;: 0, &quot;y&quot;: 8},
+        &quot;targets&quot;: [{&quot;query&quot;: &quot;Disk Query&quot;}]
+      }
+    ]
+  }
+}
+</code></pre>
+<h3>应用监控仪表板</h3>
+<pre><code class="language-flux">// APM 面板查询
+
+// 请求量
+from(bucket: &quot;apm-metrics&quot;)
+    |&gt; range(start: v.timeRangeStart)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;http_request&quot;)
+    |&gt; aggregateWindow(every: v.windowPeriod, fn: count)
+
+// 平均响应时间
+from(bucket: &quot;apm-metrics&quot;)
+    |&gt; range(start: v.timeRangeStart)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;http_request&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;latency_ms&quot;)
+    |&gt; aggregateWindow(every: v.windowPeriod, fn: mean)
+
+// 错误率
+from(bucket: &quot;apm-metrics&quot;)
+    |&gt; range(start: v.timeRangeStart)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;http_request&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;error&quot;)
+    |&gt; aggregateWindow(every: v.windowPeriod, fn: sum)
+</code></pre>
+<h2>分享与协作</h2>
+<h3>分享选项</h3>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>适用场景</th>
+<th>安全性</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>快照分享</td>
+<td>静态报告</td>
+<td>高（只读）</td>
+</tr>
+<tr>
+<td>链接分享</td>
+<td>临时查看</td>
+<td>中（需登录）</td>
+</tr>
+<tr>
+<td>嵌入 iframe</td>
+<td>外部系统集成</td>
+<td>低（公开）</td>
+</tr>
+<tr>
+<td>导出 JSON</td>
+<td>版本控制</td>
+<td>高</td>
+</tr>
+<tr>
+<td>API 导出</td>
+<td>自动化</td>
+<td>高</td>
+</tr>
+</tbody></table>
+<h3>快照分享</h3>
+<pre><code class="language-bash"># 通过 API 创建快照
+curl -X POST \
+  http://grafana:3000/api/snapshots \
+  -H &#39;Content-Type: application/json&#39; \
+  -d &#39;{
+    &quot;dashboard&quot;: {...},
+    &quot;expires&quot;: 86400,
+    &quot;name&quot;: &quot;System Report 2024-01-15&quot;
+  }&#39;
+</code></pre>
+<h3>嵌入外部系统</h3>
+<pre><code class="language-html">&lt;!-- 嵌入 iframe --&gt;
+&lt;iframe
+  src=&quot;http://grafana:3000/d-solo/dashboard-id/system-monitoring?orgId=1&amp;panelId=1&quot;
+  width=&quot;800&quot;
+  height=&quot;400&quot;
+  frameborder=&quot;0&quot;&gt;
+&lt;/iframe&gt;
+</code></pre>
+<h2>高级功能</h2>
+<h3>注释</h3>
+<pre><code class="language-flux">// 部署事件注释
+from(bucket: &quot;events&quot;)
+    |&gt; range(start: v.timeRangeStart)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;deployments&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;version&quot;)
+</code></pre>
+<h3>链接与跳转</h3>
+<pre><code class="language-json">{
+  &quot;fieldConfig&quot;: {
+    &quot;defaults&quot;: {
+      &quot;links&quot;: [
+        {
+          &quot;title&quot;: &quot;View Details&quot;,
+          &quot;url&quot;: &quot;/d/detail-dashboard?var-host=${__data.fields.host}&quot;
+        }
+      ]
+    }
+  }
+}
+</code></pre>
+<h3>混合数据源</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Mixed[&quot;混合面板&quot;]
+        A[&quot;Query A\nInfluxDB&quot;] --&gt; Viz[&quot;可视化&quot;]
+        B[&quot;Query B\nPrometheus&quot;] --&gt; Viz
+        C[&quot;Query C\nMySQL&quot;] --&gt; Viz
+    end
+</code></pre>
+<h2>性能优化</h2>
+<h3>查询优化</h3>
+<pre><code class="language-flux">// ❌ 低效：全表扫描
+from(bucket: &quot;metrics&quot;)
+    |&gt; range(start: -30d)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;value&quot;)
+
+// ✅ 高效：限制时间范围
+from(bucket: &quot;metrics&quot;)
+    |&gt; range(start: v.timeRangeStart)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; aggregateWindow(every: v.windowPeriod, fn: mean)
+</code></pre>
+<h3>缓存配置</h3>
+<table>
+<thead>
+<tr>
+<th>设置</th>
+<th>推荐值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Query timeout</td>
+<td>60s</td>
+<td>查询超时</td>
+</tr>
+<tr>
+<td>Concurrent queries</td>
+<td>10</td>
+<td>并发限制</td>
+</tr>
+<tr>
+<td>Cache TTL</td>
+<td>5m</td>
+<td>缓存时间</td>
+</tr>
+<tr>
+<td>Max rows</td>
+<td>1000000</td>
+<td>最大行数</td>
+</tr>
+</tbody></table>
+<hr>
+<p>至此，InfluxDB 完整教学文档已全部完成。14 篇文档涵盖了从入门到生产实践的所有方面。</p>

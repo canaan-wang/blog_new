@@ -1,0 +1,768 @@
+<h1>InfluxDB Line Protocol 详解</h1>
+<h2>Line Protocol 概述</h2>
+<p>Line Protocol 是 InfluxDB 的<strong>文本格式数据协议</strong>，设计简洁高效，专为高吞吐量的时序数据写入优化。</p>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Input[&quot;数据源&quot;]
+        A1[&quot;传感器&quot;]
+        A2[&quot;应用日志&quot;]
+        A3[&quot;系统指标&quot;]
+        A4[&quot;业务数据&quot;]
+    end
+    
+    subgraph Format[&quot;Line Protocol&quot;]
+        B1[&quot;measurement&quot;]
+        B2[&quot;tag_set&quot;]
+        B3[&quot;field_set&quot;]
+        B4[&quot;timestamp&quot;]
+    end
+    
+    subgraph Output[&quot;存储&quot;]
+        C1[(&quot;InfluxDB&quot;)]
+    end
+    
+    A1 --&gt;|转换为| Format
+    A2 --&gt;|转换为| Format
+    A3 --&gt;|转换为| Format
+    A4 --&gt;|转换为| Format
+    B1 --- B2
+    B2 --- B3
+    B3 --- B4
+    Format --&gt;|HTTP/UDP| C1
+    
+    style Format fill:#e3f2fd
+</code></pre>
+<h2>语法结构</h2>
+<h3>基本格式</h3>
+<pre><code>&lt;measurement&gt;[,&lt;tag_key&gt;=&lt;tag_value&gt;[,&lt;tag_key&gt;=&lt;tag_value&gt;]] &lt;field_key&gt;=&lt;field_value&gt;[,&lt;field_key&gt;=&lt;field_value&gt;] [&lt;timestamp&gt;]
+
+# 视觉分解：
+├─────────────────────────────────────┤
+│  measurement                        │  ← 必需
+│  ,tag1=value1,tag2=value2          │  ← 可选，逗号开头
+│  field1=100,field2=&quot;text&quot;          │  ← 必需，空格开头
+│  1705315200000000000               │  ← 可选，空格开头
+└─────────────────────────────────────┘
+</code></pre>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Syntax[&quot;Line Protocol 语法&quot;]
+        direction LR
+        M[&quot;measurement\n测量值名称\n必需&quot;] 
+        T[&quot;tag_set\n标签集合\n可选&quot;]
+        SP1[&quot;␣\n空格&quot;]
+        F[&quot;field_set\n字段集合\n必需&quot;]
+        SP2[&quot;␣\n空格&quot;]
+        TS[&quot;timestamp\n时间戳\n可选&quot;]
+    end
+    
+    M --&gt;|&quot;,&quot;| T
+    T --&gt; SP1
+    SP1 --&gt; F
+    F --&gt; SP2
+    SP2 --&gt; TS
+    
+    style M fill:#ffebee
+    style F fill:#ffebee
+    style TS fill:#e8f5e9
+</code></pre>
+<h3>完整示例解析</h3>
+<pre><code>原始数据行：
+cpu,host=server01,region=us-west usage_user=65.2,usage_system=12.3 1705315200000000000
+
+解析结果：
+┌─────────────────────────────────────────────────────────────────┐
+│  Measurement                                                    │
+│  ├─ name: &quot;cpu&quot;                                                 │
+│                                                                 │
+│  Tags                                                           │
+│  ├─ host: &quot;server01&quot;                                            │
+│  └─ region: &quot;us-west&quot;                                           │
+│                                                                 │
+│  Fields                                                         │
+│  ├─ usage_user: 65.2 (float)                                    │
+│  └─ usage_system: 12.3 (float)                                  │
+│                                                                 │
+│  Timestamp                                                      │
+│  └─ 1705315200000000000 (2024-01-15 12:00:00 UTC)               │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2>各组件详解</h2>
+<h3>1. Measurement（测量值）</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph MeasurementRules[&quot;Measurement 命名规则&quot;]
+        R1[&quot;避免关键字:
+_time, _field, _measurement, _value&quot;]
+        R2[&quot;大小写敏感:
+Cpu ≠ cpu ≠ CPU&quot;]
+        R3[&quot;特殊字符:
+逗号和空格需转义&quot;]
+        R4[&quot;长度限制:
+建议 &lt; 64 字符&quot;]
+    end
+    
+    subgraph Examples[&quot;正例 vs 反例&quot;]
+        direction LR
+        Good[&quot;✅ cpu\n✅ disk_io\n✅ network_traffic\n✅ \&quot;my measurement\&quot;&quot;]
+        Bad[&quot;❌ _time\n❌ 1cpu (数字开头)\n❌ cpu,usage (含逗号)&quot;]
+    end
+    
+    style MeasurementRules fill:#e3f2fd
+    style Good fill:#e8f5e9
+    style Bad fill:#ffebee
+</code></pre>
+<pre><code class="language-python"># Python 示例：转义特殊字符
+def escape_measurement(name):
+    &quot;&quot;&quot;转义 measurement 名称中的特殊字符&quot;&quot;&quot;
+    # 转义逗号和空格
+    escaped = name.replace(&#39;,&#39;, &#39;\\,&#39;).replace(&#39; &#39;, &#39;\\ &#39;)
+    return escaped
+
+# 示例
+print(escape_measurement(&quot;my measurement&quot;))  # my\ measurement
+print(escape_measurement(&quot;cpu,usage&quot;))       # cpu\,usage
+</code></pre>
+<h3>2. Tag Set（标签集）</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph TagFormat[&quot;Tag 格式&quot;]
+        Key[&quot;key\n(标识符)&quot;]
+        Eq[&quot;=&quot;]
+        Val[&quot;value\n(字符串)&quot;]
+        Comma[&quot;,&quot;]
+    end
+    
+    Key --&gt; Eq --&gt; Val --&gt;|可选下一个| Comma --&gt; Key
+    
+    subgraph Escaping[&quot;特殊字符转义&quot;]
+        E1[&quot;空格 → \\ &quot;
+    comma → \\,&quot;]
+        E2[&quot;= → \\=\n    \&quot; → \\\&quot;
+    &quot;]
+    end
+    
+    style TagFormat fill:#e8f5e9
+</code></pre>
+<p><strong>Tag 转义规则：</strong></p>
+<table>
+<thead>
+<tr>
+<th>字符</th>
+<th>转义方式</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>逗号 <code>,</code></td>
+<td><code>\,</code></td>
+<td><code>location=New\,York</code></td>
+</tr>
+<tr>
+<td>等号 <code>=</code></td>
+<td><code>\=</code></td>
+<td><code>key=val\=ue</code></td>
+</tr>
+<tr>
+<td>空格 <code> </code></td>
+<td><code>\ </code></td>
+<td><code>location=San\ Francisco</code></td>
+</tr>
+</tbody></table>
+<pre><code class="language-python"># Tag 转义函数
+def escape_tag_value(value):
+    &quot;&quot;&quot;转义 tag value 中的特殊字符&quot;&quot;&quot;
+    return (value
+        .replace(&#39;\\&#39;, &#39;\\\\&#39;)  # 先转义反斜杠
+        .replace(&#39;,&#39;, &#39;\\,&#39;)
+        .replace(&#39;=&#39;, &#39;\\=&#39;)
+        .replace(&#39; &#39;, &#39;\\ &#39;))
+
+# 实际示例
+tag_value = &quot;US West, Region=1&quot;
+escaped = escape_tag_value(tag_value)
+print(f&quot;location={escaped}&quot;)
+# 输出: location=US\ West\,\ Region\=1
+</code></pre>
+<h3>3. Field Set（字段集）</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph FieldTypes[&quot;Field 数据类型语法&quot;]
+        Float[&quot;Float\n(默认)\nvalue=42.5&quot;]
+        Int[&quot;Integer\n(后缀 i)\ncount=100i&quot;]
+        UInt[&quot;UInteger\n(后缀 u)\nid=123u&quot;]
+        String[&quot;String\n(引号包裹)\nmsg=\&quot;hello\&quot;&quot;]
+        Bool[&quot;Boolean\nt=true/false&quot;]
+    end
+    
+    subgraph TypeInference[&quot;类型推断&quot;]
+        T1[&quot;无后缀 → Float&quot;]
+        T2[&quot;i 后缀 → Integer&quot;]
+        T3[&quot;u 后缀 → UInteger&quot;]
+        T4[&quot;引号 → String&quot;]
+        T5[&quot;true/false → Boolean&quot;]
+    end
+    
+    style FieldTypes fill:#fff3e0
+</code></pre>
+<p><strong>Field 类型完整示例：</strong></p>
+<pre><code># Float (默认)
+temperature value=23.5
+temperature value=-10.8
+temperature value=0.0
+temperature value=.5        # 有效: 0.5
+temperature value=5.        # 有效: 5.0
+
+# Integer (必须加 i 后缀)
+counter value=100i
+counter value=-50i
+counter value=0i
+
+# UInteger (必须加 u 后缀)
+ids value=4294967295u
+
+# String (双引号包裹，内部引号转义)
+logs message=&quot;Server started&quot;
+logs message=&quot;Error: \&quot;Connection refused\&quot;&quot;
+logs message=&quot;Path: C:\\\\Users\\\\Admin&quot;  # Windows 路径转义
+
+# Boolean
+events alert=true
+events enabled=false
+events flag=T    # 也支持 T/F
+events ok=f      # 也支持 t/f
+</code></pre>
+<p><strong>String 转义规则：</strong></p>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph StringEscaping[&quot;String 转义&quot;]
+        Backslash[&quot;\\\\ → \\\\n反斜杠&quot;]
+        Quote[&quot;\\\&quot; → \&quot;
+双引号&quot;]
+        NL[&quot;\\n → 换行
+不推荐&quot;]
+    end
+    
+    subgraph Examples[&quot;示例&quot;]
+        E1[&#39;&quot;line1\\\\nline2&quot;&#39;]
+        E2[&#39;&quot;He said \\\&quot;Hi\\\&quot;&quot;&#39;]
+        E3[&#39;&quot;C:\\\\Program Files\\\\App&quot;&#39;]
+    end
+    
+    StringEscaping --- Examples
+</code></pre>
+<h3>4. Timestamp（时间戳）</h3>
+<pre><code class="language-mermaid">gantt
+    title 时间戳精度对比
+    dateFormat x
+    axisFormat %H:%M:%S
+    
+    section 秒 (s)
+    1705315200 :a1, 0, 1s
+    
+    section 毫秒 (ms)  
+    1705315200000 :a2, 0, 1ms
+    
+    section 微秒 (μs)
+    1705315200000000 :a3, 0, 1μs
+    
+    section 纳秒 (ns) - 默认
+    1705315200000000000 :a4, 0, 1ns
+</code></pre>
+<p><strong>Timestamp 精度说明：</strong></p>
+<table>
+<thead>
+<tr>
+<th>精度</th>
+<th>长度</th>
+<th>示例</th>
+<th>应用场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>s</code></td>
+<td>10位</td>
+<td><code>1705315200</code></td>
+<td>低频日志</td>
+</tr>
+<tr>
+<td><code>ms</code></td>
+<td>13位</td>
+<td><code>1705315200000</code></td>
+<td>应用监控</td>
+</tr>
+<tr>
+<td><code>μs</code></td>
+<td>16位</td>
+<td><code>1705315200000000</code></td>
+<td>高精度传感器</td>
+</tr>
+<tr>
+<td><code>ns</code></td>
+<td>19位</td>
+<td><code>1705315200000000000</code></td>
+<td>默认，金融数据</td>
+</tr>
+</tbody></table>
+<pre><code class="language-python"># Python 生成不同精度时间戳
+from datetime import datetime
+import time
+
+def get_timestamps():
+    now = datetime.now()
+    unix_time = now.timestamp()
+    
+    return {
+        &#39;seconds&#39;: int(unix_time),
+        &#39;milliseconds&#39;: int(unix_time * 1000),
+        &#39;microseconds&#39;: int(unix_time * 1_000_000),
+        &#39;nanoseconds&#39;: int(unix_time * 1_000_000_000),
+        &#39;iso&#39;: now.isoformat()
+    }
+
+timestamps = get_timestamps()
+for precision, ts in timestamps.items():
+    print(f&quot;{precision:12}: {ts}&quot;)
+
+# 输出：
+# seconds     : 1705315200
+# milliseconds: 1705315200000
+# microseconds: 1705315200000000
+# nanoseconds : 1705315200000000000
+# iso         : 2024-01-15T12:00:00.123456
+</code></pre>
+<h2>完整写入示例</h2>
+<h3>单条数据写入</h3>
+<pre><code class="language-bash"># 使用 curl 写入单条数据
+curl -X POST http://localhost:8086/api/v2/write \
+  --header &quot;Authorization: Token YOUR_TOKEN&quot; \
+  --header &quot;Content-Type: text/plain; charset=utf-8&quot; \
+  --data-binary &#39;cpu,host=server01,region=us-west usage_user=65.2,usage_system=12.3 1705315200000000000&#39;
+</code></pre>
+<h3>批量数据写入</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Batch[&quot;批量写入优势&quot;]
+        B1[&quot;减少网络开销&quot;]
+        B2[&quot;提高吞吐量&quot;]
+        B3[&quot;原子性写入&quot;]
+    end
+    
+    subgraph Format[&quot;批量格式&quot;]
+        F1[&quot;Line 1\\n&quot;]
+        F2[&quot;Line 2\\n&quot;]
+        F3[&quot;Line 3\\n&quot;]
+        F4[&quot;...&quot;]
+    end
+    
+    Batch --&gt; Format
+</code></pre>
+<pre><code class="language-bash"># 批量写入多条数据
+curl -X POST http://localhost:8086/api/v2/write \
+  --header &quot;Authorization: Token YOUR_TOKEN&quot; \
+  --header &quot;Content-Type: text/plain&quot; \
+  --data-binary &#39;
+cpu,host=server01,region=us-west usage_user=65.2,usage_system=12.3 1705315200000000000
+cpu,host=server01,region=us-west usage_user=67.1,usage_system=11.8 1705315260000000000
+cpu,host=server01,region=us-west usage_user=64.8,usage_system=13.2 1705315320000000000
+memory,host=server01,region=us-west used_percent=78.5,available=2048000i 1705315200000000000
+memory,host=server01,region=us-west used_percent=79.2,available=1984000i 1705315260000000000
+&#39;
+</code></pre>
+<h3>Python 写入示例</h3>
+<pre><code class="language-python">import requests
+from datetime import datetime
+import time
+
+class InfluxDBWriter:
+    def __init__(self, url, token, org, bucket):
+        self.url = f&quot;{url}/api/v2/write&quot;
+        self.token = token
+        self.org = org
+        self.bucket = bucket
+        self.headers = {
+            &quot;Authorization&quot;: f&quot;Token {token}&quot;,
+            &quot;Content-Type&quot;: &quot;text/plain; charset=utf-8&quot;
+        }
+    
+    def escape_measurement(self, name):
+        &quot;&quot;&quot;转义 measurement 名称&quot;&quot;&quot;
+        return name.replace(&#39;,&#39;, &#39;\\,&#39;).replace(&#39; &#39;, &#39;\\ &#39;)
+    
+    def escape_tag(self, key, value):
+        &quot;&quot;&quot;转义 tag key 和 value&quot;&quot;&quot;
+        key = key.replace(&#39;\\&#39;, &#39;\\\\&#39;).replace(&#39;,&#39;, &#39;\\,&#39;).replace(&#39;=&#39;, &#39;\\=&#39;).replace(&#39; &#39;, &#39;\\ &#39;)
+        value = value.replace(&#39;\\&#39;, &#39;\\\\&#39;).replace(&#39;,&#39;, &#39;\\,&#39;).replace(&#39;=&#39;, &#39;\\=&#39;).replace(&#39; &#39;, &#39;\\ &#39;)
+        return f&quot;{key}={value}&quot;
+    
+    def escape_field(self, key, value):
+        &quot;&quot;&quot;格式化 field，根据类型处理&quot;&quot;&quot;
+        key = key.replace(&#39;\\&#39;, &#39;\\\\&#39;).replace(&#39;,&#39;, &#39;\\,&#39;).replace(&#39;=&#39;, &#39;\\=&#39;).replace(&#39; &#39;, &#39;\\ &#39;)
+        
+        if isinstance(value, bool):
+            return f&quot;{key}={&#39;t&#39; if value else &#39;f&#39;}&quot;
+        elif isinstance(value, int):
+            return f&quot;{key}={value}i&quot;
+        elif isinstance(value, str):
+            escaped = value.replace(&#39;\\&#39;, &#39;\\\\&#39;).replace(&#39;&quot;&#39;, &#39;\\&quot;&#39;)
+            return f&#39;{key}=&quot;{escaped}&quot;&#39;
+        else:  # float
+            return f&quot;{key}={value}&quot;
+    
+    def create_line(self, measurement, tags, fields, timestamp_ns=None):
+        &quot;&quot;&quot;创建 Line Protocol 格式的数据行&quot;&quot;&quot;
+        if timestamp_ns is None:
+            timestamp_ns = int(time.time() * 1e9)
+        
+        # Measurement
+        line = self.escape_measurement(measurement)
+        
+        # Tags
+        if tags:
+            tag_str = &#39;,&#39;.join([self.escape_tag(k, str(v)) for k, v in tags.items()])
+            line += f&quot;,{tag_str}&quot;
+        
+        # Fields
+        field_str = &#39;,&#39;.join([self.escape_field(k, v) for k, v in fields.items()])
+        line += f&quot; {field_str}&quot;
+        
+        # Timestamp
+        line += f&quot; {timestamp_ns}&quot;
+        
+        return line
+    
+    def write(self, lines):
+        &quot;&quot;&quot;写入数据到 InfluxDB&quot;&quot;&quot;
+        if isinstance(lines, list):
+            data = &#39;\n&#39;.join(lines)
+        else:
+            data = lines
+        
+        params = {
+            &#39;org&#39;: self.org,
+            &#39;bucket&#39;: self.bucket,
+            &#39;precision&#39;: &#39;ns&#39;
+        }
+        
+        response = requests.post(
+            self.url,
+            headers=self.headers,
+            params=params,
+            data=data
+        )
+        
+        if response.status_code == 204:
+            print(f&quot;✅ 写入成功: {len(lines) if isinstance(lines, list) else 1} 条数据&quot;)
+        else:
+            print(f&quot;❌ 写入失败: {response.status_code}&quot;)
+            print(response.text)
+        
+        return response.status_code == 204
+
+
+# 使用示例
+writer = InfluxDBWriter(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;your-token-here&quot;,
+    org=&quot;my-org&quot;,
+    bucket=&quot;my-bucket&quot;
+)
+
+# 单条写入
+line = writer.create_line(
+    measurement=&quot;cpu&quot;,
+    tags={&quot;host&quot;: &quot;server01&quot;, &quot;region&quot;: &quot;us-west&quot;},
+    fields={&quot;usage_user&quot;: 65.2, &quot;usage_system&quot;: 12.3}
+)
+writer.write(line)
+
+# 批量写入
+lines = []
+for i in range(10):
+    line = writer.create_line(
+        measurement=&quot;cpu&quot;,
+        tags={&quot;host&quot;: f&quot;server{i:02d}&quot;, &quot;region&quot;: &quot;us-west&quot;},
+        fields={&quot;usage_user&quot;: 60.0 + i, &quot;usage_system&quot;: 10.0 + i/2}
+    )
+    lines.append(line)
+
+writer.write(lines)
+</code></pre>
+<h2>性能优化</h2>
+<h3>批量大小优化</h3>
+<pre><code class="language-mermaid">xychart-beta
+    title &quot;批量大小 vs 写入性能&quot;
+    x-axis [100, 500, 1000, 5000, 10000, 50000]
+    y-axis &quot;吞吐量 (points/sec)&quot; 0 -&gt; 1000000
+    line [50000, 150000, 300000, 600000, 800000, 950000]
+    line [50000, 150000, 300000, 500000, 550000, 400000]
+</code></pre>
+<p><strong>推荐批量大小：</strong></p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐批量</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>低延迟要求</td>
+<td>100-500</td>
+<td>快速响应，较低吞吐</td>
+</tr>
+<tr>
+<td>平衡模式</td>
+<td>1000-5000</td>
+<td>推荐默认值</td>
+</tr>
+<tr>
+<td>高吞吐模式</td>
+<td>5000-10000</td>
+<td>延迟可接受时使用</td>
+</tr>
+<tr>
+<td>离线批处理</td>
+<td>10000-50000</td>
+<td>最大吞吐，高延迟</td>
+</tr>
+</tbody></table>
+<h3>压缩传输</h3>
+<pre><code class="language-bash"># 启用 Gzip 压缩（减少网络传输）
+curl -X POST http://localhost:8086/api/v2/write \
+  --header &quot;Authorization: Token YOUR_TOKEN&quot; \
+  --header &quot;Content-Encoding: gzip&quot; \
+  --header &quot;Content-Type: text/plain&quot; \
+  --data-binary @data.gz
+
+# Python 示例
+import gzip
+import requests
+
+data = &quot;cpu,host=server01 value=65.2&quot;
+compressed = gzip.compress(data.encode(&#39;utf-8&#39;))
+
+requests.post(
+    &quot;http://localhost:8086/api/v2/write&quot;,
+    headers={
+        &quot;Authorization&quot;: &quot;Token YOUR_TOKEN&quot;,
+        &quot;Content-Encoding&quot;: &quot;gzip&quot;,
+        &quot;Content-Type&quot;: &quot;text/plain&quot;
+    },
+    params={&quot;org&quot;: &quot;my-org&quot;, &quot;bucket&quot;: &quot;my-bucket&quot;},
+    data=compressed
+)
+</code></pre>
+<h3>异步批量写入</h3>
+<pre><code class="language-python">import asyncio
+import aiohttp
+from collections import deque
+import time
+
+class AsyncInfluxDBWriter:
+    def __init__(self, url, token, org, bucket, batch_size=1000, flush_interval=5):
+        self.url = f&quot;{url}/api/v2/write&quot;
+        self.token = token
+        self.org = org
+        self.bucket = bucket
+        self.batch_size = batch_size
+        self.flush_interval = flush_interval
+        
+        self.buffer = deque()
+        self.last_flush = time.time()
+        self.session = None
+    
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession(
+            headers={&quot;Authorization&quot;: f&quot;Token {self.token}&quot;}
+        )
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.flush()
+        await self.session.close()
+    
+    async def write(self, line):
+        &quot;&quot;&quot;异步写入单条数据&quot;&quot;&quot;
+        self.buffer.append(line)
+        
+        # 触发条件：缓冲区满 或 超时
+        if (len(self.buffer) &gt;= self.batch_size or 
+            time.time() - self.last_flush &gt;= self.flush_interval):
+            await self.flush()
+    
+    async def flush(self):
+        &quot;&quot;&quot;刷新缓冲区&quot;&quot;&quot;
+        if not self.buffer:
+            return
+        
+        lines = list(self.buffer)
+        self.buffer.clear()
+        self.last_flush = time.time()
+        
+        data = &#39;\n&#39;.join(lines)
+        
+        params = {
+            &#39;org&#39;: self.org,
+            &#39;bucket&#39;: self.bucket,
+            &#39;precision&#39;: &#39;ns&#39;
+        }
+        
+        try:
+            async with self.session.post(
+                self.url,
+                params=params,
+                data=data,
+                headers={&quot;Content-Type&quot;: &quot;text/plain&quot;}
+            ) as response:
+                if response.status == 204:
+                    print(f&quot;✅ 批量写入 {len(lines)} 条数据&quot;)
+                else:
+                    text = await response.text()
+                    print(f&quot;❌ 写入失败: {response.status} - {text}&quot;)
+        except Exception as e:
+            print(f&quot;❌ 网络错误: {e}&quot;)
+
+
+# 使用示例
+async def main():
+    async with AsyncInfluxDBWriter(
+        url=&quot;http://localhost:8086&quot;,
+        token=&quot;your-token&quot;,
+        org=&quot;my-org&quot;,
+        bucket=&quot;my-bucket&quot;,
+        batch_size=1000,
+        flush_interval=5
+    ) as writer:
+        
+        # 模拟高频写入
+        for i in range(10000):
+            line = f&quot;cpu,host=server{i%100:02d} usage_user={60+i%40}.0 {int(time.time()*1e9)}&quot;
+            await writer.write(line)
+            
+            if i % 1000 == 0:
+                await asyncio.sleep(0.01)  # 避免阻塞
+
+asyncio.run(main())
+</code></pre>
+<h2>错误处理</h2>
+<h3>常见错误码</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Errors[&quot;HTTP 错误码&quot;]
+        E204[&quot;✅ 204\n成功&quot;]
+        E400[&quot;❌ 400\n请求错误&quot;]
+        E401[&quot;❌ 401\n认证失败&quot;]
+        E403[&quot;❌ 403\n权限不足&quot;]
+        E404[&quot;❌ 404\nBucket不存在&quot;]
+        E413[&quot;❌ 413\n请求过大&quot;]
+        E422[&quot;❌ 422\n数据格式错误&quot;]
+        E500[&quot;❌ 500\n服务器错误&quot;]
+    end
+    
+    subgraph Solutions[&quot;解决方案&quot;]
+        S400[&quot;检查语法\n转义特殊字符&quot;]
+        S401[&quot;检查 Token\n重新生成&quot;]
+        S413[&quot;减少批量大小&quot;]
+        S422[&quot;检查数据类型&quot;]
+    end
+    
+    E400 --&gt; S400
+    E401 --&gt; S401
+    E413 --&gt; S413
+    E422 --&gt; S422
+    
+    style E204 fill:#e8f5e9
+    style Errors fill:#ffebee
+</code></pre>
+<h3>错误重试策略</h3>
+<pre><code class="language-python">import time
+from functools import wraps
+
+def retry_on_error(max_retries=3, delay=1, backoff=2):
+    &quot;&quot;&quot;指数退避重试装饰器&quot;&quot;&quot;
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            current_delay = delay
+            
+            while retries &lt; max_retries:
+                try:
+                    result = func(*args, **kwargs)
+                    if result:  # 成功
+                        return True
+                except Exception as e:
+                    print(f&quot;❌ 错误: {e}&quot;)
+                
+                retries += 1
+                if retries &lt; max_retries:
+                    print(f&quot;🔄 重试 {retries}/{max_retries}，等待 {current_delay}s...&quot;)
+                    time.sleep(current_delay)
+                    current_delay *= backoff
+            
+            print(&quot;❌ 达到最大重试次数，写入失败&quot;)
+            return False
+        
+        return wrapper
+    return decorator
+
+
+@retry_on_error(max_retries=3, delay=1, backoff=2)
+def write_with_retry(writer, lines):
+    return writer.write(lines)
+</code></pre>
+<h2>调试技巧</h2>
+<h3>验证数据格式</h3>
+<pre><code class="language-python">def validate_line_protocol(line):
+    &quot;&quot;&quot;验证 Line Protocol 格式是否正确&quot;&quot;&quot;
+    errors = []
+    
+    # 基本结构检查
+    parts = line.split(&#39; &#39;)
+    if len(parts) &lt; 2:
+        errors.append(&quot;缺少 field set&quot;)
+        return errors
+    
+    # 检查 measurement + tags
+    measurement_tags = parts[0].split(&#39;,&#39;)
+    measurement = measurement_tags[0]
+    
+    if not measurement:
+        errors.append(&quot;measurement 不能为空&quot;)
+    
+    # 检查 tags
+    for tag in measurement_tags[1:]:
+        if &#39;=&#39; not in tag:
+            errors.append(f&quot;tag 格式错误: {tag}&quot;)
+    
+    # 检查 fields
+    fields_part = parts[1]
+    fields = fields_part.split(&#39;,&#39;)
+    
+    if not fields:
+        errors.append(&quot;至少需要一个 field&quot;)
+    
+    for field in fields:
+        if &#39;=&#39; not in field:
+            errors.append(f&quot;field 格式错误: {field}&quot;)
+    
+    # 检查时间戳（如果有）
+    if len(parts) &gt;= 3:
+        timestamp = parts[2]
+        if not timestamp.isdigit():
+            errors.append(f&quot;timestamp 必须是数字: {timestamp}&quot;)
+    
+    return errors
+
+
+# 测试
+lines = [
+    &quot;cpu,host=server01 usage_user=65.2 1705315200000000000&quot;,  # 正确
+    &quot;cpu,host=server01&quot;,  # 错误：缺少 fields
+    &quot;cpu usage_user&quot;,  # 错误：field 缺少值
+]
+
+for line in lines:
+    errors = validate_line_protocol(line)
+    if errors:
+        print(f&quot;❌ {line}&quot;)
+        for error in errors:
+            print(f&quot;   - {error}&quot;)
+    else:
+        print(f&quot;✅ {line}&quot;)
+</code></pre>
+<hr>
+<p>掌握 Line Protocol 后，下一篇将介绍 Flux 查询语言。</p>

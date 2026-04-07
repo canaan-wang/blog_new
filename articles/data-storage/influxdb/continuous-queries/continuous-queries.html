@@ -1,0 +1,588 @@
+<h1>InfluxDB 连续查询与任务调度</h1>
+<h2>概述</h2>
+<p><strong>连续查询（Continuous Queries, CQ）</strong> 和 <strong>任务（Tasks）</strong> 是 InfluxDB 中实现数据自动处理的核心机制，用于定时执行数据聚合、转换和迁移。</p>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Automation[&quot;自动化数据处理&quot;]
+        A1[&quot;连续查询 CQ\nInfluxDB 1.x&quot;]
+        A2[&quot;定时任务 Task\nInfluxDB 2.x&quot;]
+    end
+    
+    subgraph UseCases[&quot;应用场景&quot;]
+        U1[&quot;自动降采样\n高频→低频&quot;]
+        U2[&quot;指标预聚合\n加速查询&quot;]
+        U3[&quot;数据清洗\n异常处理&quot;]
+        U4[&quot;跨库同步\n数据迁移&quot;]
+    end
+    
+    Automation --&gt; UseCases
+    
+    style Automation fill:#e3f2fd
+    style UseCases fill:#e8f5e9
+</code></pre>
+<h2>InfluxDB 1.x 连续查询</h2>
+<h3>基本概念</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph CQFlow[&quot;连续查询执行流程&quot;]
+        Trigger[&quot;触发器\nevery X&quot;] --&gt; Query[&quot;执行查询\nSELECT ...&quot;]
+        Query --&gt; Into[&quot;写入目标\nINTO ...&quot;]
+        Into --&gt; Store[&quot;存储结果\n新 measurement&quot;]
+    end
+    
+    style CQFlow fill:#fff3e0
+</code></pre>
+<h3>创建连续查询</h3>
+<pre><code class="language-sql">-- 基本语法
+CREATE CONTINUOUS QUERY cq_name ON database_name
+BEGIN
+    SELECT function(s)
+    INTO new_measurement
+    FROM original_measurement
+    [WHERE conditions]
+    GROUP BY time(interval)[, tag1, tag2, ...]
+END
+
+-- 示例 1：基础降采样
+CREATE CONTINUOUS QUERY cq_5m ON monitoring
+BEGIN
+    SELECT mean(usage_user) AS usage_user
+    INTO monitoring.&quot;7days&quot;.cpu_5m
+    FROM monitoring.&quot;1day&quot;.cpu
+    GROUP BY time(5m), host, region
+END
+
+-- 示例 2：多字段聚合
+CREATE CONTINUOUS QUERY cq_cpu_1h ON monitoring
+BEGIN
+    SELECT 
+        mean(usage_user) AS avg_user,
+        max(usage_user) AS max_user,
+        min(usage_user) AS min_user,
+        sum(usage_system) AS total_system
+    INTO monitoring.&quot;30days&quot;.cpu_1h
+    FROM monitoring.&quot;7days&quot;.cpu
+    GROUP BY time(1h), host
+END
+
+-- 示例 3：跨 measurement 聚合
+CREATE CONTINUOUS QUERY cq_server_stats ON monitoring
+BEGIN
+    SELECT mean(usage_user) AS cpu_avg,
+           mean(used_percent) AS mem_avg
+    INTO monitoring.&quot;30days&quot;.server_summary
+    FROM (
+        SELECT usage_user FROM cpu
+        UNION ALL
+        SELECT used_percent FROM memory
+    )
+    GROUP BY time(5m), host
+END
+</code></pre>
+<h3>高级 CQ 配置</h3>
+<pre><code class="language-sql">-- 1. RESAMPLE 配置 - 处理延迟数据
+CREATE CONTINUOUS QUERY cq_resample ON monitoring
+RESAMPLE EVERY 5m FOR 15m  -- 每5分钟执行，处理15分钟窗口
+BEGIN
+    SELECT mean(usage_user)
+    INTO monitoring.&quot;7days&quot;.cpu_resampled
+    FROM monitoring.&quot;1day&quot;.cpu
+    GROUP BY time(5m), host
+END
+
+-- 2. 只填充空值（不重新计算已有数据）
+CREATE CONTINUOUS QUERY cq_fill_only ON monitoring
+BEGIN
+    SELECT mean(usage_user)
+    INTO monitoring.&quot;7days&quot;.cpu_filled
+    FROM monitoring.&quot;1day&quot;.cpu
+    GROUP BY time(5m), host
+    fill(previous)
+END
+
+-- 3. 条件过滤的 CQ
+CREATE CONTINUOUS QUERY cq_errors_only ON monitoring
+BEGIN
+    SELECT count(status) AS error_count
+    INTO monitoring.&quot;30days&quot;.error_summary
+    FROM monitoring.&quot;7days&quot;.http_logs
+    WHERE status &gt;= 500
+    GROUP BY time(1h), service
+END
+</code></pre>
+<pre><code class="language-mermaid">gantt
+    title RESAMPLE EVERY 5m FOR 15m 执行示意
+    dateFormat HH:mm:ss
+    axisFormat %H:%M
+    
+    section 时间窗口
+    执行1 (10:00) :10:00:00, 10:05:00
+    执行2 (10:05) :10:05:00, 10:10:00
+    执行3 (10:10) :10:10:00, 10:15:00
+    
+    section 数据范围
+    查询范围 (15m) :09:55:00, 10:10:00
+</code></pre>
+<h3>管理连续查询</h3>
+<pre><code class="language-sql">-- 查看所有 CQ
+SHOW CONTINUOUS QUERIES
+
+-- 删除 CQ
+DROP CONTINUOUS QUERY cq_5m ON monitoring
+
+-- 修改 CQ（先删除再重建）
+DROP CONTINUOUS QUERY cq_cpu_1h ON monitoring
+
+CREATE CONTINUOUS QUERY cq_cpu_1h ON monitoring
+BEGIN
+    SELECT mean(usage_user)
+    INTO monitoring.&quot;30days&quot;.cpu_hourly
+    FROM monitoring.&quot;7days&quot;.cpu
+    GROUP BY time(1h), host
+END
+</code></pre>
+<h2>InfluxDB 2.x 任务（Tasks）</h2>
+<h3>Task 优势</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph TaskAdvantages[&quot;Task vs CQ 优势&quot;]
+        T1[&quot;Flux 语言\n更强大&quot;]
+        T2[&quot;跨 Bucket\n数据迁移&quot;]
+        T3[&quot;复杂逻辑\n条件分支&quot;]
+        T4[&quot;错误处理\n重试机制&quot;]
+        T5[&quot;调度灵活\ncron表达式&quot;]
+    end
+    
+    style TaskAdvantages fill:#e8f5e9
+</code></pre>
+<h3>基础 Task 语法</h3>
+<pre><code class="language-flux">// 基本结构
+option task = {
+    name: &quot;task-name&quot;,           // 任务名称
+    every: 1h,                   // 执行间隔
+    offset: 5m                   // 延迟偏移（可选）
+}
+
+// 数据处理逻辑
+from(bucket: &quot;source-bucket&quot;)
+    |&gt; range(start: -task.every)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; aggregateWindow(every: task.every, fn: mean)
+    |&gt; to(bucket: &quot;target-bucket&quot;)
+</code></pre>
+<h3>创建 Task</h3>
+<pre><code class="language-bash"># 1. 从 Flux 文件创建
+influx task create --file downsample.flux
+
+# 2. 直接创建
+cat &lt;&lt; &#39;EOF&#39; | influx task create -
+option task = {name: &quot;hourly-downsample&quot;, every: 1h}
+
+from(bucket: &quot;raw-data&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;metrics&quot;)
+    |&gt; aggregateWindow(every: 1h, fn: mean)
+    |&gt; to(bucket: &quot;hourly-data&quot;)
+EOF
+
+# 3. 使用 cron 表达式
+influx task create --file nightly-report.flux
+</code></pre>
+<pre><code class="language-flux">// nightly-report.flux - 每天凌晨2点执行
+option task = {
+    name: &quot;nightly-report&quot;,
+    cron: &quot;0 2 * * *&quot;  // cron 表达式
+}
+
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1d)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;sales&quot;)
+    |&gt; aggregateWindow(every: 1h, fn: sum)
+    |&gt; to(bucket: &quot;daily-reports&quot;)
+</code></pre>
+<h3>Python 管理 Tasks</h3>
+<pre><code class="language-python">from influxdb_client import InfluxDBClient
+from influxdb_client.domain.task import Task
+from influxdb_client.domain.task_status_type import TaskStatusType
+
+client = InfluxDBClient(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;your-token&quot;,
+    org=&quot;my-org&quot;
+)
+
+tasks_api = client.tasks_api()
+
+# 创建降采样 Task
+def create_downsample_task(
+    name: str,
+    source_bucket: str,
+    target_bucket: str,
+    measurement: str,
+    interval: str = &quot;5m&quot;,
+    fn: str = &quot;mean&quot;
+):
+    flux_script = f&#39;&#39;&#39;
+option task = {{
+    name: &quot;{name}&quot;,
+    every: {interval}
+}}
+
+from(bucket: &quot;{source_bucket}&quot;)
+    |&gt; range(start: -{interval})
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;{measurement}&quot;)
+    |&gt; aggregateWindow(every: {interval}, fn: {fn})
+    |&gt; to(bucket: &quot;{target_bucket}&quot;)
+&#39;&#39;&#39;
+    
+    task = Task(
+        org_id=&quot;your-org-id&quot;,
+        name=name,
+        flux=flux_script,
+        status=TaskStatusType.ACTIVE
+    )
+    
+    created = tasks_api.create_task(task)
+    print(f&quot;Created task: {created.name} (ID: {created.id})&quot;)
+    return created.id
+
+# 创建多层降采样任务
+def create_tiered_tasks():
+    # Level 1: 1分钟 → 5分钟
+    create_downsample_task(
+        name=&quot;downsample-5m&quot;,
+        source_bucket=&quot;raw-1m&quot;,
+        target_bucket=&quot;aggregated-5m&quot;,
+        measurement=&quot;metrics&quot;,
+        interval=&quot;5m&quot;
+    )
+    
+    # Level 2: 5分钟 → 1小时
+    create_downsample_task(
+        name=&quot;downsample-1h&quot;,
+        source_bucket=&quot;aggregated-5m&quot;,
+        target_bucket=&quot;aggregated-1h&quot;,
+        measurement=&quot;metrics&quot;,
+        interval=&quot;1h&quot;
+    )
+    
+    # Level 3: 1小时 → 1天
+    create_downsample_task(
+        name=&quot;downsample-1d&quot;,
+        source_bucket=&quot;aggregated-1h&quot;,
+        target_bucket=&quot;archived-1d&quot;,
+        measurement=&quot;metrics&quot;,
+        interval=&quot;1d&quot;
+    )
+
+# 列出所有 Tasks
+def list_tasks():
+    tasks = tasks_api.find_tasks()
+    print(&quot;\n📋 Active Tasks:&quot;)
+    for task in tasks.tasks:
+        status = &quot;🟢&quot; if task.status == &quot;active&quot; else &quot;🔴&quot;
+        print(f&quot;{status} {task.name} ({task.every or task.cron})&quot;)
+
+# 查看 Task 执行历史
+def get_task_logs(task_id: str):
+    logs = tasks_api.get_logs(task_id)
+    print(f&quot;\n📜 Task {task_id} Logs:&quot;)
+    for log in logs.events:
+        print(f&quot;[{log.time}] {log.message}&quot;)
+
+# 更新 Task
+def update_task(task_id: str, new_interval: str):
+    task = tasks_api.find_task_by_id(task_id)
+    
+    # 更新 Flux 脚本中的 interval
+    old_flux = task.flux
+    new_flux = old_flux.replace(
+        f&#39;every: {task.every}&#39;,
+        f&#39;every: {new_interval}&#39;
+    )
+    
+    task.every = new_interval
+    task.flux = new_flux
+    
+    updated = tasks_api.update_task(task)
+    print(f&quot;Updated task: {updated.name}&quot;)
+
+# 删除 Task
+def delete_task(task_id: str):
+    tasks_api.delete_task(task_id)
+    print(f&quot;Deleted task: {task_id}&quot;)
+
+# 暂停/恢复 Task
+def toggle_task(task_id: str, active: bool):
+    task = tasks_api.find_task_by_id(task_id)
+    task.status = TaskStatusType.ACTIVE if active else TaskStatusType.INACTIVE
+    tasks_api.update_task(task)
+    status = &quot;resumed&quot; if active else &quot;paused&quot;
+    print(f&quot;Task {task_id} {status}&quot;)
+</code></pre>
+<h2>高级 Task 场景</h2>
+<h3>1. 数据清洗任务</h3>
+<pre><code class="language-flux">// data-cleansing.flux
+option task = {
+    name: &quot;data-cleansing&quot;,
+    every: 5m
+}
+
+from(bucket: &quot;raw-sensors&quot;)
+    |&gt; range(start: -10m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;temperature&quot;)
+    // 过滤异常值
+    |&gt; filter(fn: (r) =&gt; r._value &gt; -50.0 and r._value &lt; 100.0)
+    // 填充缺失值
+    |&gt; fill(column: &quot;_value&quot;, usePrevious: true)
+    // 平滑处理（移动平均）
+    |&gt; movingAverage(n: 3)
+    |&gt; to(bucket: &quot;clean-sensors&quot;)
+</code></pre>
+<h3>2. 异常检测任务</h3>
+<pre><code class="language-flux">// anomaly-detection.flux
+option task = {
+    name: &quot;anomaly-detection&quot;,
+    every: 1m
+}
+
+import &quot;math&quot;
+import &quot;influxdata/influxdb/monitor&quot;
+
+// 计算统计阈值
+data = from(bucket: &quot;metrics&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+
+stats = data
+    |&gt; reduce(
+        identity: {sum: 0.0, count: 0, sumsq: 0.0},
+        fn: (r, accumulator) =&gt; ({
+            sum: accumulator.sum + r._value,
+            count: accumulator.count + 1,
+            sumsq: accumulator.sumsq + r._value * r._value
+        })
+    )
+    |&gt; map(fn: (r) =&gt; ({
+        mean: r.sum / r.count,
+        stddev: math.sqrt(r.sumsq / r.count - (r.sum / r.count) * (r.sum / r.count))
+    }))
+
+// 检测最新值是否异常
+from(bucket: &quot;metrics&quot;)
+    |&gt; range(start: -2m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; last()
+    |&gt; join(tables: {data: data, stats: stats}, on: [&quot;host&quot;])
+    |&gt; map(fn: (r) =&gt; ({
+        r with
+        z_score: (r._value_data - r.mean) / r.stddev,
+        is_anomaly: if math.abs((r._value_data - r.mean) / r.stddev) &gt; 3.0 
+                    then true 
+                    else false
+    }))
+    |&gt; filter(fn: (r) =&gt; r.is_anomaly)
+    |&gt; to(bucket: &quot;alerts&quot;)
+</code></pre>
+<h3>3. 多数据源合并</h3>
+<pre><code class="language-flux">// multi-source-merge.flux
+option task = {
+    name: &quot;multi-source-merge&quot;,
+    every: 5m
+}
+
+// 数据源 1: Prometheus
+prometheus = from(bucket: &quot;prometheus-bucket&quot;)
+    |&gt; range(start: -10m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;container_cpu&quot;)
+    |&gt; set(key: &quot;source&quot;, value: &quot;prometheus&quot;)
+
+// 数据源 2: Telegraf
+telegraf = from(bucket: &quot;telegraf-bucket&quot;)
+    |&gt; range(start: -10m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; set(key: &quot;source&quot;, value: &quot;telegraf&quot;)
+
+// 数据源 3: 应用埋点
+application = from(bucket: &quot;app-bucket&quot;)
+    |&gt; range(start: -10m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;custom_metrics&quot;)
+    |&gt; set(key: &quot;source&quot;, value: &quot;application&quot;)
+
+// 合并所有数据源
+union(tables: [prometheus, telegraf, application])
+    |&gt; group(columns: [&quot;source&quot;, &quot;host&quot;])
+    |&gt; aggregateWindow(every: 5m, fn: mean)
+    |&gt; to(bucket: &quot;unified-metrics&quot;)
+</code></pre>
+<h3>4. 跨组织数据同步</h3>
+<pre><code class="language-flux">// cross-org-sync.flux
+option task = {
+    name: &quot;cross-org-sync&quot;,
+    every: 15m
+}
+
+// 从生产组织读取（需要相应权限）
+production_data = from(bucket: &quot;production/metrics&quot;)
+    |&gt; range(start: -30m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;critical_metrics&quot;)
+
+// 写入到分析组织
+production_data
+    |&gt; set(key: &quot;data_classification&quot;, value: &quot;sensitive&quot;)
+    |&gt; to(bucket: &quot;analytics/anonymized&quot;, org: &quot;analytics-org&quot;)
+</code></pre>
+<h2>任务监控与告警</h2>
+<h3>Task 执行监控</h3>
+<pre><code class="language-python"># task-monitor.py
+from influxdb_client import InfluxDBClient
+import json
+from datetime import datetime, timedelta
+
+class TaskMonitor:
+    def __init__(self, url, token, org):
+        self.client = InfluxDBClient(url=url, token=token, org=org)
+        self.tasks_api = self.client.tasks_api()
+    
+    def check_task_health(self):
+        &quot;&quot;&quot;检查所有 Task 健康状态&quot;&quot;&quot;
+        tasks = self.tasks_api.find_tasks()
+        health_report = []
+        
+        for task in tasks.tasks:
+            # 获取最近执行记录
+            try:
+                runs = self.tasks_api.get_runs(task.id, limit=5)
+                last_run = runs.runs[0] if runs.runs else None
+                
+                status = {
+                    &#39;task_name&#39;: task.name,
+                    &#39;task_id&#39;: task.id,
+                    &#39;status&#39;: task.status,
+                    &#39;last_run_status&#39;: last_run.status if last_run else &#39;unknown&#39;,
+                    &#39;last_run_time&#39;: last_run.scheduled_for if last_run else None,
+                    &#39;every&#39;: task.every,
+                    &#39;cron&#39;: task.cron
+                }
+                
+                # 检查是否延迟执行
+                if last_run:
+                    scheduled = datetime.fromisoformat(last_run.scheduled_for.replace(&#39;Z&#39;, &#39;+00:00&#39;))
+                    if last_run.finished_at:
+                        finished = datetime.fromisoformat(last_run.finished_at.replace(&#39;Z&#39;, &#39;+00:00&#39;))
+                        status[&#39;duration_sec&#39;] = (finished - scheduled).total_seconds()
+                
+                health_report.append(status)
+                
+                # 告警条件
+                if status[&#39;last_run_status&#39;] == &#39;failed&#39;:
+                    self.send_alert(f&quot;Task {task.name} failed!&quot;)
+                elif status.get(&#39;duration_sec&#39;, 0) &gt; 300:
+                    self.send_alert(f&quot;Task {task.name} is slow ({status[&#39;duration_sec&#39;]}s)&quot;)
+                    
+            except Exception as e:
+                print(f&quot;Error checking task {task.name}: {e}&quot;)
+        
+        return health_report
+    
+    def send_alert(self, message):
+        &quot;&quot;&quot;发送告警（示例）&quot;&quot;&quot;
+        print(f&quot;🚨 ALERT: {message}&quot;)
+        # 集成邮件/短信/钉钉等
+    
+    def generate_report(self):
+        &quot;&quot;&quot;生成 Task 执行报告&quot;&quot;&quot;
+        report = self.check_task_health()
+        
+        print(&quot;\n&quot; + &quot;=&quot;*60)
+        print(&quot;Task Health Report&quot;)
+        print(&quot;=&quot;*60)
+        
+        for task in report:
+            status_icon = &quot;🟢&quot; if task[&#39;last_run_status&#39;] == &#39;success&#39; else &quot;🔴&quot;
+            print(f&quot;{status_icon} {task[&#39;task_name&#39;]}&quot;)
+            print(f&quot;   Status: {task[&#39;status&#39;]}&quot;)
+            print(f&quot;   Schedule: {task.get(&#39;every&#39;) or task.get(&#39;cron&#39;)}&quot;)
+            print(f&quot;   Last Run: {task[&#39;last_run_status&#39;]} at {task[&#39;last_run_time&#39;]}&quot;)
+            if &#39;duration_sec&#39; in task:
+                print(f&quot;   Duration: {task[&#39;duration_sec&#39;]:.2f}s&quot;)
+            print()
+        
+        return report
+
+# 使用示例
+monitor = TaskMonitor(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;your-token&quot;,
+    org=&quot;my-org&quot;
+)
+
+monitor.generate_report()
+</code></pre>
+<h3>Task 失败重试策略</h3>
+<pre><code class="language-flux">// retry-aware-task.flux
+option task = {
+    name: &quot;reliable-downsample&quot;,
+    every: 5m,
+    retry: 3  // 失败重试3次
+}
+
+import &quot;influxdata/influxdb/secrets&quot;
+
+// 获取上次成功执行时间
+last_success = from(bucket: &quot;_tasks&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;runs&quot;)
+    |&gt; filter(fn: (r) =&gt; r.taskID == &quot;${task.id}&quot;)
+    |&gt; filter(fn: (r) =&gt; r.status == &quot;success&quot;)
+    |&gt; last()
+    |&gt; findRecord(fn: (key) =&gt; true, idx: 0)
+
+// 使用上次成功时间作为起点
+start_time = if exists last_success._time 
+    then last_success._time 
+    else -10m
+
+from(bucket: &quot;raw-data&quot;)
+    |&gt; range(start: time(v: start_time))
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;metrics&quot;)
+    |&gt; aggregateWindow(every: 5m, fn: mean)
+    |&gt; to(bucket: &quot;downsampled&quot;)
+</code></pre>
+<h2>性能优化</h2>
+<h3>Task 执行优化</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Optimization[&quot;Task 性能优化&quot;]
+        O1[&quot;减少查询范围\n避免全表扫描&quot;]
+        O2[&quot;合理窗口大小\n减少内存占用&quot;]
+        O3[&quot;批处理写入\n提高写入吞吐&quot;]
+        O4[&quot;错峰调度\n避免资源竞争&quot;]
+        O5[&quot;增量处理\n只处理新数据&quot;]
+    end
+    
+    style Optimization fill:#e8f5e9
+</code></pre>
+<pre><code class="language-flux">// 优化前：全范围查询
+from(bucket: &quot;metrics&quot;)
+    |&gt; range(start: -7d)  // 范围太大！
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; aggregateWindow(every: 1h, fn: mean)
+
+// 优化后：只查新数据
+from(bucket: &quot;metrics&quot;)
+    |&gt; range(start: -1h)  // 只处理最近数据
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; aggregateWindow(every: 1h, fn: mean)
+</code></pre>
+<h3>调度策略</h3>
+<pre><code class="language-bash"># 错峰调度示例
+# Task 1: 每小时第 0 分钟
+# Task 2: 每小时第 15 分钟
+# Task 3: 每小时第 30 分钟
+# Task 4: 每小时第 45 分钟
+
+influx task create --file task-00.flux  # cron: &quot;0 * * * *&quot;
+influx task create --file task-15.flux  # cron: &quot;15 * * * *&quot;
+influx task create --file task-30.flux  # cron: &quot;30 * * * *&quot;
+influx task create --file task-45.flux  # cron: &quot;45 * * * *&quot;
+</code></pre>
+<hr>
+<p>掌握连续查询和任务调度后，下一篇将介绍备份与恢复策略。</p>

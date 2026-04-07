@@ -1,0 +1,693 @@
+<h1>InfluxDB 监控集成实战</h1>
+<h2>监控体系架构</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph DataCollection[&quot;数据采集层&quot;]
+        Sys[&quot;系统指标\nCPU/内存/磁盘&quot;]
+        App[&quot;应用指标\n响应时间/错误率&quot;]
+        Biz[&quot;业务指标\n订单/用户/交易&quot;]
+        Log[&quot;日志数据\nELK/Loki&quot;]
+    end
+    
+    subgraph InfluxDB[&quot;InfluxDB 存储层&quot;]
+        Raw[(&quot;原始数据\n热存储&quot;)]
+        Agg[(&quot;聚合数据\n温存储&quot;)]
+        Archive[(&quot;归档数据\n冷存储&quot;)]
+    end
+    
+    subgraph Visualization[&quot;可视化层&quot;]
+        Dash[&quot;Grafana\n仪表板&quot;]
+        Alert[&quot;告警系统\nAlertmanager&quot;]
+        Report[&quot;报表系统&quot;]
+    end
+    
+    Sys --&gt;|Telegraf| Raw
+    App --&gt;|SDK/API| Raw
+    Biz --&gt;|ETL| Raw
+    Log --&gt;|Pipeline| Raw
+    Raw --&gt;|CQ/Task| Agg
+    Agg --&gt;|降采样| Archive
+    InfluxDB --&gt; Dash
+    InfluxDB --&gt; Alert
+    InfluxDB --&gt; Report
+</code></pre>
+<h2>系统监控</h2>
+<h3>Linux 系统监控</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Metrics[&quot;系统指标类型&quot;]
+        CPU[&quot;CPU\n使用率/负载&quot;]
+        MEM[&quot;内存\n使用/交换&quot;]
+        DISK[&quot;磁盘\nIO/空间&quot;]
+        NET[&quot;网络\n流量/连接&quot;]
+        PROC[&quot;进程\n数量/状态&quot;]
+    end
+    
+    style Metrics fill:#e3f2fd
+</code></pre>
+<p><strong>Telegraf 系统监控配置：</strong></p>
+<pre><code class="language-toml"># /etc/telegraf/telegraf.d/system.conf
+
+# CPU 监控
+[[inputs.cpu]]
+  percpu = true
+  totalcpu = true
+  collect_cpu_time = false
+  report_active = true
+  fielddrop = [&quot;time_*&quot;]
+
+# 内存监控
+[[inputs.mem]]
+
+# 磁盘监控
+[[inputs.disk]]
+  ignore_fs = [&quot;tmpfs&quot;, &quot;devtmpfs&quot;, &quot;devfs&quot;, &quot;iso9660&quot;, &quot;overlay&quot;, &quot;aufs&quot;, &quot;squashfs&quot;]
+
+# 磁盘 IO
+[[inputs.diskio]]
+  devices = [&quot;sda&quot;, &quot;sdb&quot;, &quot;nvme0n1&quot;]
+
+# 网络监控
+[[inputs.net]]
+  interfaces = [&quot;eth0&quot;, &quot;ens160&quot;, &quot;enp0s3&quot;]
+
+# 系统负载
+[[inputs.system]]
+
+# 进程监控
+[[inputs.processes]]
+
+# 内核统计
+[[inputs.kernel]]
+</code></pre>
+<h3>Docker 容器监控</h3>
+<pre><code class="language-toml"># docker.conf
+[[inputs.docker]]
+  endpoint = &quot;unix:///var/run/docker.sock&quot;
+  gather_services = false
+  container_names = []
+  container_name_include = []
+  container_name_exclude = []
+  timeout = &quot;5s&quot;
+  perdevice = true
+  total = true
+  
+  # 存储到 InfluxDB
+  [inputs.docker.tags]
+    source = &quot;docker-daemon&quot;
+</code></pre>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph ContainerMetrics[&quot;容器指标&quot;]
+        C1[&quot;容器 CPU\ncontainer_cpu_usage&quot;]
+        C2[&quot;容器内存\ncontainer_memory&quot;]
+        C3[&quot;容器网络\ncontainer_network&quot;]
+        C4[&quot;容器块 IO\ncontainer_blkio&quot;]
+    end
+    
+    subgraph HostMetrics[&quot;宿主机指标&quot;]
+        H1[&quot;系统 CPU&quot;]
+        H2[&quot;系统内存&quot;]
+    end
+    
+    C1 --&gt;|归一化| H1
+    C2 --&gt;|限制对比| H2
+</code></pre>
+<h3>Kubernetes 监控</h3>
+<pre><code class="language-yaml"># telegraf-daemonset.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: telegraf
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      name: telegraf
+  template:
+    metadata:
+      labels:
+        name: telegraf
+    spec:
+      containers:
+      - name: telegraf
+        image: telegraf:1.28
+        env:
+        - name: INFLUX_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: influxdb-token
+              key: token
+        - name: INFLUX_ORG
+          value: &quot;my-org&quot;
+        - name: INFLUX_BUCKET
+          value: &quot;k8s-metrics&quot;
+        volumeMounts:
+        - name: config
+          mountPath: /etc/telegraf
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: telegraf-config
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: proc
+        hostPath:
+          path: /proc
+</code></pre>
+<pre><code class="language-toml"># k8s-telegraf.conf
+[[inputs.kubernetes]]
+  url = &quot;https://$HOSTIP:10250&quot;
+  bearer_token = &quot;/var/run/secrets/kubernetes.io/serviceaccount/token&quot;
+  insecure_skip_verify = true
+  
+[[inputs.prometheus]]
+  urls = [&quot;http://kube-state-metrics.monitoring.svc:8080/metrics&quot;]
+  metric_version = 2
+</code></pre>
+<h2>应用性能监控 (APM)</h2>
+<h3>HTTP 服务监控</h3>
+<pre><code class="language-python"># Flask 应用埋点示例
+from flask import Flask, request
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import SYNCHRONOUS
+import time
+
+app = Flask(__name__)
+
+# InfluxDB 客户端
+client = InfluxDBClient(
+    url=&quot;http://localhost:8086&quot;,
+    token=&quot;your-token&quot;,
+    org=&quot;my-org&quot;
+)
+write_api = client.write_api(write_options=SYNCHRONOUS)
+
+@app.before_request
+def before_request():
+    request.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    # 计算响应时间
+    latency = time.time() - request.start_time
+    
+    # 构建数据点
+    point = Point(&quot;http_request&quot;) \
+        .tag(&quot;method&quot;, request.method) \
+        .tag(&quot;endpoint&quot;, request.endpoint) \
+        .tag(&quot;status_code&quot;, str(response.status_code)) \
+        .tag(&quot;service&quot;, &quot;user-api&quot;) \
+        .field(&quot;latency_ms&quot;, latency * 1000) \
+        .field(&quot;request_size&quot;, request.content_length or 0) \
+        .field(&quot;response_size&quot;, response.content_length or 0) \
+        .field(&quot;error&quot;, 1 if response.status_code &gt;= 500 else 0)
+    
+    # 写入 InfluxDB
+    write_api.write(bucket=&quot;apm-metrics&quot;, record=point)
+    
+    return response
+
+@app.errorhandler(Exception)
+def handle_error(error):
+    # 记录异常
+    point = Point(&quot;http_error&quot;) \
+        .tag(&quot;service&quot;, &quot;user-api&quot;) \
+        .tag(&quot;error_type&quot;, type(error).__name__) \
+        .field(&quot;count&quot;, 1) \
+        .field(&quot;message&quot;, str(error)[:255])
+    
+    write_api.write(bucket=&quot;apm-metrics&quot;, record=point)
+    raise error
+
+@app.route(&#39;/health&#39;)
+def health():
+    return {&#39;status&#39;: &#39;ok&#39;}
+
+if __name__ == &#39;__main__&#39;:
+    app.run(host=&#39;0.0.0.0&#39;, port=5000)
+</code></pre>
+<h3>数据库查询监控</h3>
+<pre><code class="language-python"># SQLAlchemy 查询监控
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+import time
+
+@event.listens_for(Engine, &quot;before_cursor_execute&quot;)
+def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    context._query_start_time = time.time()
+
+@event.listens_for(Engine, &quot;after_cursor_execute&quot;)
+def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    total_time = time.time() - context._query_start_time
+    
+    # 解析 SQL 类型
+    sql_type = statement.split()[0].upper() if statement else &quot;UNKNOWN&quot;
+    
+    point = Point(&quot;db_query&quot;) \
+        .tag(&quot;database&quot;, conn.engine.url.database) \
+        .tag(&quot;sql_type&quot;, sql_type) \
+        .tag(&quot;table&quot;, extract_table_name(statement)) \
+        .field(&quot;duration_ms&quot;, total_time * 1000) \
+        .field(&quot;rows_affected&quot;, cursor.rowcount)
+    
+    write_api.write(bucket=&quot;apm-metrics&quot;, record=point)
+</code></pre>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Client as 客户端
+    participant App as 应用服务
+    participant DB as 数据库
+    participant Influx as InfluxDB
+    
+    Client-&gt;&gt;App: HTTP Request
+    App-&gt;&gt;Influx: 记录请求开始
+    
+    App-&gt;&gt;DB: SQL Query
+    DB--&gt;&gt;App: Query Result
+    App-&gt;&gt;Influx: 记录查询耗时
+    
+    App--&gt;&gt;Client: HTTP Response
+    App-&gt;&gt;Influx: 记录总耗时
+</code></pre>
+<h2>业务指标监控</h2>
+<h3>电商业务指标</h3>
+<pre><code class="language-python"># 订单指标采集
+class OrderMetrics:
+    def __init__(self, influx_client):
+        self.write_api = influx_client.write_api()
+        self.bucket = &quot;business-metrics&quot;
+    
+    def record_order_created(self, order):
+        &quot;&quot;&quot;订单创建&quot;&quot;&quot;
+        point = Point(&quot;order_events&quot;) \
+            .tag(&quot;event_type&quot;, &quot;created&quot;) \
+            .tag(&quot;platform&quot;, order.platform) \
+            .tag(&quot;region&quot;, order.region) \
+            .tag(&quot;payment_method&quot;, order.payment_method) \
+            .field(&quot;order_amount&quot;, float(order.amount)) \
+            .field(&quot;item_count&quot;, len(order.items)) \
+            .field(&quot;user_id_hash&quot;, hash(order.user_id) % 1000)  # 降基数
+        
+        self.write_api.write(bucket=self.bucket, record=point)
+    
+    def record_order_completed(self, order):
+        &quot;&quot;&quot;订单完成&quot;&quot;&quot;
+        processing_time = (order.completed_at - order.created_at).total_seconds()
+        
+        point = Point(&quot;order_events&quot;) \
+            .tag(&quot;event_type&quot;, &quot;completed&quot;) \
+            .tag(&quot;platform&quot;, order.platform) \
+            .field(&quot;processing_time_sec&quot;, processing_time) \
+            .field(&quot;order_amount&quot;, float(order.amount))
+        
+        self.write_api.write(bucket=self.bucket, record=point)
+    
+    def record_inventory_change(self, product_id, quantity, operation):
+        &quot;&quot;&quot;库存变更&quot;&quot;&quot;
+        point = Point(&quot;inventory&quot;) \
+            .tag(&quot;product_category&quot;, get_category(product_id)) \
+            .tag(&quot;warehouse&quot;, get_warehouse(product_id)) \
+            .tag(&quot;operation&quot;, operation) \
+            .field(&quot;quantity_change&quot;, quantity) \
+            .field(&quot;product_id_bucket&quot;, hash(product_id) % 100)
+        
+        self.write_api.write(bucket=self.bucket, record=point)
+
+# 实时销售看板数据
+def generate_sales_dashboard_data():
+    &quot;&quot;&quot;生成销售实时指标&quot;&quot;&quot;
+    query = &#39;&#39;&#39;
+    // 今日销售额
+    today_sales = from(bucket: &quot;business-metrics&quot;)
+        |&gt; range(start: today())
+        |&gt; filter(fn: (r) =&gt; r._measurement == &quot;order_events&quot;)
+        |&gt; filter(fn: (r) =&gt; r.event_type == &quot;completed&quot;)
+        |&gt; filter(fn: (r) =&gt; r._field == &quot;order_amount&quot;)
+        |&gt; sum()
+    
+    // 今日订单数
+    today_orders = from(bucket: &quot;business-metrics&quot;)
+        |&gt; range(start: today())
+        |&gt; filter(fn: (r) =&gt; r._measurement == &quot;order_events&quot;)
+        |&gt; filter(fn: (r) =&gt; r._field == &quot;order_amount&quot;)
+        |&gt; count()
+    
+    // 每小时销售趋势
+    hourly_sales = from(bucket: &quot;business-metrics&quot;)
+        |&gt; range(start: today())
+        |&gt; filter(fn: (r) =&gt; r._measurement == &quot;order_events&quot;)
+        |&gt; aggregateWindow(every: 1h, fn: sum)
+    
+    return {
+        &quot;total_sales&quot;: today_sales,
+        &quot;total_orders&quot;: today_orders,
+        &quot;hourly_trend&quot;: hourly_sales
+    }
+</code></pre>
+<pre><code class="language-mermaid">xychart-beta
+    title &quot;电商销售趋势（小时级）&quot;
+    x-axis [&quot;00&quot;, &quot;04&quot;, &quot;08&quot;, &quot;12&quot;, &quot;16&quot;, &quot;20&quot;, &quot;24&quot;]
+    y-axis &quot;销售额（万元）&quot;
+    bar [5, 2, 15, 45, 38, 62, 30]
+    line [5, 2, 15, 45, 38, 62, 30]
+</code></pre>
+<h2>告警配置</h2>
+<h3>Flux 告警规则</h3>
+<pre><code class="language-flux">// cpu-alert.flux - CPU 使用率告警
+import &quot;influxdata/influxdb/monitor&quot;
+import &quot;influxdata/influxdb/secrets&quot;
+
+// 检查 CPU 使用率
+from(bucket: &quot;system-metrics&quot;)
+    |&gt; range(start: -5m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_idle&quot;)
+    |&gt; aggregateWindow(every: 1m, fn: mean)
+    |&gt; map(fn: (r) =&gt; ({r with _value: 100.0 - r._value}))  // 转换为使用率
+    |&gt; monitor.check(
+        crit: (r) =&gt; r._value &gt; 90.0,
+        warn: (r) =&gt; r._value &gt; 80.0,
+        info: (r) =&gt; r._value &gt; 70.0,
+        messageFn: (r) =&gt; &quot;CPU usage on ${r.host} is ${r._value}%&quot;,
+        data: {
+            _check_name: &quot;cpu-usage-check&quot;,
+            _check_id: &quot;cpu-check-001&quot;,
+            _notification_endpoint: &quot;slack-endpoint&quot;
+        }
+    )
+</code></pre>
+<pre><code class="language-flux">// memory-alert.flux - 内存告警
+from(bucket: &quot;system-metrics&quot;)
+    |&gt; range(start: -5m)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;mem&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;used_percent&quot;)
+    |&gt; aggregateWindow(every: 1m, fn: mean)
+    |&gt; monitor.check(
+        crit: (r) =&gt; r._value &gt; 95.0,
+        warn: (r) =&gt; r._value &gt; 85.0,
+        messageFn: (r) =&gt; &quot;Memory usage on ${r.host}: ${r._value}%&quot;
+    )
+</code></pre>
+<h3>告警通知配置</h3>
+<pre><code class="language-yaml"># alert-notification.yml
+apiVersion: influxdata.com/v2
+kind: NotificationEndpoint
+metadata:
+  name: slack-endpoint
+spec:
+  type: slack
+  url: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+  token: &quot;&quot;
+---
+apiVersion: influxdata.com/v2
+kind: NotificationRule
+metadata:
+  name: critical-alerts
+spec:
+  endpoint: slack-endpoint
+  every: 1m
+  offset: 0s
+  statusRules:
+    - currentLevel: CRIT
+      previousLevel: OK
+  tagRules: []
+</code></pre>
+<pre><code class="language-python"># 自定义告警处理器
+import requests
+import json
+from datetime import datetime
+
+class AlertManager:
+    def __init__(self, influx_client):
+        self.client = influx_client
+        self.alert_bucket = &quot;alerts&quot;
+    
+    def send_slack_alert(self, message, severity=&quot;warning&quot;):
+        &quot;&quot;&quot;发送 Slack 告警&quot;&quot;&quot;
+        color = {&quot;info&quot;: &quot;#36a64f&quot;, &quot;warning&quot;: &quot;#ff9900&quot;, &quot;critical&quot;: &quot;#ff0000&quot;}
+        
+        payload = {
+            &quot;attachments&quot;: [{
+                &quot;color&quot;: color.get(severity, &quot;#36a64f&quot;),
+                &quot;title&quot;: f&quot;InfluxDB Alert - {severity.upper()}&quot;,
+                &quot;text&quot;: message,
+                &quot;ts&quot;: int(datetime.now().timestamp())
+            }]
+        }
+        
+        webhook_url = &quot;https://hooks.slack.com/services/YOUR/WEBHOOK&quot;
+        requests.post(webhook_url, json=payload)
+    
+    def send_pagerduty_alert(self, message, severity=&quot;warning&quot;):
+        &quot;&quot;&quot;发送 PagerDuty 告警&quot;&quot;&quot;
+        headers = {
+            &quot;Authorization&quot;: &quot;Token token=YOUR_PAGERDUTY_TOKEN&quot;,
+            &quot;Content-Type&quot;: &quot;application/json&quot;
+        }
+        
+        payload = {
+            &quot;incident&quot;: {
+                &quot;type&quot;: &quot;incident&quot;,
+                &quot;title&quot;: message,
+                &quot;service&quot;: {&quot;id&quot;: &quot;YOUR_SERVICE_ID&quot;, &quot;type&quot;: &quot;service_reference&quot;},
+                &quot;urgency&quot;: &quot;high&quot; if severity == &quot;critical&quot; else &quot;low&quot;
+            }
+        }
+        
+        requests.post(
+            &quot;https://api.pagerduty.com/incidents&quot;,
+            headers=headers,
+            json=payload
+        )
+</code></pre>
+<h2>可观测性仪表板</h2>
+<h3>Grafana 仪表板配置</h3>
+<pre><code class="language-json">{
+  &quot;dashboard&quot;: {
+    &quot;title&quot;: &quot;System Monitoring&quot;,
+    &quot;panels&quot;: [
+      {
+        &quot;title&quot;: &quot;CPU Usage&quot;,
+        &quot;type&quot;: &quot;timeseries&quot;,
+        &quot;targets&quot;: [
+          {
+            &quot;query&quot;: &quot;from(bucket: \&quot;system-metrics\&quot;)\n  |\u003e range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |\u003e filter(fn: (r) =\u003e r._measurement == \&quot;cpu\&quot;)\n  |\u003e filter(fn: (r) =\u003e r._field == \&quot;usage_user\&quot;)\n  |\u003e aggregateWindow(every: v.windowPeriod, fn: mean)\n  |\u003e group(columns: [\&quot;host\&quot;])&quot;
+          }
+        ]
+      },
+      {
+        &quot;title&quot;: &quot;Memory Usage&quot;,
+        &quot;type&quot;: &quot;gauge&quot;,
+        &quot;targets&quot;: [
+          {
+            &quot;query&quot;: &quot;from(bucket: \&quot;system-metrics\&quot;)\n  |\u003e range(start: -1m)\n  |\u003e filter(fn: (r) =\u003e r._measurement == \&quot;mem\&quot;)\n  |\u003e filter(fn: (r) =\u003e r._field == \&quot;used_percent\&quot;)\n  |\u003e last()&quot;
+          }
+        ],
+        &quot;fieldConfig&quot;: {
+          &quot;defaults&quot;: {
+            &quot;thresholds&quot;: {
+              &quot;steps&quot;: [
+                {&quot;color&quot;: &quot;green&quot;, &quot;value&quot;: 0},
+                {&quot;color&quot;: &quot;yellow&quot;, &quot;value&quot;: 70},
+                {&quot;color&quot;: &quot;red&quot;, &quot;value&quot;: 85}
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+</code></pre>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Dashboard[&quot;Grafana 仪表板布局&quot;]
+        Row1[&quot;行1: 系统概览&quot;]
+        Row2[&quot;行2: 资源详情&quot;]
+        Row3[&quot;行3: 应用指标&quot;]
+        Row4[&quot;行4: 业务指标&quot;]
+    end
+    
+    subgraph Panels[&quot;面板类型&quot;]
+        P1[&quot;时间序列\nCPU/内存趋势&quot;]
+        P2[&quot;仪表盘\n当前使用率&quot;]
+        P3[&quot;热力图\n延迟分布&quot;]
+        P4[&quot;表格\nTop N 列表&quot;]
+        P5[&quot;统计\n汇总数据&quot;]
+        P6[&quot;告警\n异常标记&quot;]
+    end
+    
+    Row1 --&gt; P1
+    Row1 --&gt; P2
+    Row2 --&gt; P3
+    Row2 --&gt; P4
+    Row3 --&gt; P5
+    Row4 --&gt; P6
+</code></pre>
+<h2>实战案例：完整监控方案</h2>
+<h3>微服务监控架构</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Services[&quot;微服务集群&quot;]
+        S1[&quot;API Gateway&quot;]
+        S2[&quot;User Service&quot;]
+        S3[&quot;Order Service&quot;]
+        S4[&quot;Payment Service&quot;]
+    end
+    
+    subgraph Collection[&quot;数据采集&quot;]
+        Sidecar[&quot;Telegraf Sidecar&quot;]
+        SDK[&quot;应用 SDK&quot;]
+        Envoy[&quot;Envoy Proxy&quot;]
+    end
+    
+    subgraph Storage[&quot;InfluxDB&quot;]
+        Metrics[(&quot;指标数据&quot;)]
+        Traces[(&quot;链路数据&quot;)]
+        Logs[(&quot;日志索引&quot;)]
+    end
+    
+    subgraph Analysis[&quot;分析告警&quot;]
+        Alert[&quot;告警规则&quot;]
+        SLO[&quot;SLO 监控&quot;]
+        RCA[&quot;根因分析&quot;]
+    end
+    
+    S1 --&gt; Sidecar
+    S2 --&gt; SDK
+    S3 --&gt; SDK
+    S4 --&gt; Envoy
+    Sidecar --&gt; Metrics
+    SDK --&gt; Metrics
+    Envoy --&gt; Metrics
+    Metrics --&gt; Alert
+    Metrics --&gt; SLO
+    Metrics --&gt; RCA
+</code></pre>
+<h3>统一监控脚本</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;
+统一监控配置部署工具
+&quot;&quot;&quot;
+import yaml
+from influxdb_client import InfluxDBClient
+from influxdb_client.domain.bucket import BucketRetentionRules
+
+class MonitoringSetup:
+    def __init__(self, url, token, org):
+        self.client = InfluxDBClient(url=url, token=token, org=org)
+        self.org = org
+    
+    def create_monitoring_buckets(self):
+        &quot;&quot;&quot;创建监控用 Buckets&quot;&quot;&quot;
+        buckets_api = self.client.buckets_api()
+        
+        buckets_config = [
+            {
+                &quot;name&quot;: &quot;system-metrics&quot;,
+                &quot;retention_days&quot;: 7,
+                &quot;description&quot;: &quot;系统级监控指标&quot;
+            },
+            {
+                &quot;name&quot;: &quot;apm-metrics&quot;,
+                &quot;retention_days&quot;: 30,
+                &quot;description&quot;: &quot;应用性能监控&quot;
+            },
+            {
+                &quot;name&quot;: &quot;business-metrics&quot;,
+                &quot;retention_days&quot;: 90,
+                &quot;description&quot;: &quot;业务指标&quot;
+            },
+            {
+                &quot;name&quot;: &quot;alerts&quot;,
+                &quot;retention_days&quot;: 365,
+                &quot;description&quot;: &quot;告警历史&quot;
+            }
+        ]
+        
+        for config in buckets_config:
+            try:
+                buckets_api.create_bucket(
+                    bucket_name=config[&quot;name&quot;],
+                    retention_rules=BucketRetentionRules(
+                        every_seconds=config[&quot;retention_days&quot;] * 24 * 60 * 60
+                    ),
+                    org=self.org
+                )
+                print(f&quot;✅ Created bucket: {config[&#39;name&#39;]}&quot;)
+            except Exception as e:
+                print(f&quot;⚠️ Bucket {config[&#39;name&#39;]}: {e}&quot;)
+    
+    def create_alert_tasks(self):
+        &quot;&quot;&quot;创建告警任务&quot;&quot;&quot;
+        tasks_api = self.client.tasks_api()
+        
+        alerts = [
+            {
+                &quot;name&quot;: &quot;cpu-high-alert&quot;,
+                &quot;flux&quot;: &#39;&#39;&#39;
+option task = {name: &quot;cpu-high-alert&quot;, every: 1m}
+import &quot;influxdata/influxdb/monitor&quot;
+from(bucket: &quot;system-metrics&quot;)
+    |\u003e range(start: -2m)
+    |\u003e filter(fn: (r) =\u003e r._measurement == &quot;cpu&quot;)
+    |\u003e filter(fn: (r) =\u003e r._field == &quot;usage_user&quot;)
+    |\u003e monitor.check(
+        crit: (r) =\u003e r._value \u003e 90.0,
+        warn: (r) =\u003e r._value \u003e 80.0,
+        messageFn: (r) =\u003e &quot;High CPU on ${r.host}: ${r._value}%&quot;
+    )
+&#39;&#39;&#39;
+            },
+            {
+                &quot;name&quot;: &quot;memory-high-alert&quot;,
+                &quot;flux&quot;: &#39;&#39;&#39;
+option task = {name: &quot;memory-high-alert&quot;, every: 1m}
+import &quot;influxdata/influxdb/monitor&quot;
+from(bucket: &quot;system-metrics&quot;)
+    |\u003e range(start: -2m)
+    |\u003e filter(fn: (r) =\u003e r._measurement == &quot;mem&quot;)
+    |\u003e filter(fn: (r) =\u003e r._field == &quot;used_percent&quot;)
+    |\u003e monitor.check(
+        crit: (r) =\u003e r._value \u003e 95.0,
+        warn: (r) =\u003e r._value \u003e 85.0,
+        messageFn: (r) =\u003e &quot;High memory on ${r.host}: ${r._value}%&quot;
+    )
+&#39;&#39;&#39;
+            }
+        ]
+        
+        for alert in alerts:
+            task = Task(
+                org_id=self.get_org_id(),
+                name=alert[&quot;name&quot;],
+                flux=alert[&quot;flux&quot;],
+                every=&quot;1m&quot;
+            )
+            tasks_api.create_task(task)
+            print(f&quot;✅ Created alert task: {alert[&#39;name&#39;]}&quot;)
+
+# 部署监控栈
+def deploy_monitoring_stack():
+    setup = MonitoringSetup(
+        url=&quot;http://localhost:8086&quot;,
+        token=&quot;your-token&quot;,
+        org=&quot;my-org&quot;
+    )
+    
+    setup.create_monitoring_buckets()
+    setup.create_alert_tasks()
+    print(&quot;\n🎉 Monitoring stack deployed!&quot;)
+
+if __name__ == &#39;__main__&#39;:
+    deploy_monitoring_stack()
+</code></pre>
+<hr>
+<p>掌握监控集成后，下一篇将介绍性能调优。</p>

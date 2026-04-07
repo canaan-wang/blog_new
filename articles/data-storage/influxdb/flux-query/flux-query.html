@@ -1,0 +1,494 @@
+<h1>Flux 查询语言完全指南</h1>
+<h2>Flux 概述</h2>
+<p>Flux 是 InfluxDB 2.x 引入的<strong>函数式数据脚本语言</strong>，专为查询、转换和处理时序数据设计。</p>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph FluxFeatures[&quot;Flux 核心特性&quot;]
+        F1[&quot;函数式编程\n管道操作符 |&gt;&quot;]
+        F2[&quot;强类型系统\n静态类型检查&quot;]
+        F3[&quot;扩展性强\n自定义函数&quot;]
+        F4[&quot;多数据源\n支持异构查询&quot;]
+    end
+    
+    subgraph Pipeline[&quot;管道处理流程&quot;]
+        P1[&quot;from()\n数据源&quot;] --&gt;|&quot;&gt;|&quot;| P2[&quot;filter()\n过滤&quot;] --&gt;|&quot;&gt;|&quot;| P3[&quot;aggregate()\n聚合&quot;] --&gt;|&quot;&gt;|&quot;| P4[&quot;yield()\n输出&quot;]
+    end
+    
+    FluxFeatures --&gt; Pipeline
+    
+    style FluxFeatures fill:#e3f2fd
+    style Pipeline fill:#e8f5e9
+</code></pre>
+<h2>基础语法</h2>
+<h3>查询结构</h3>
+<pre><code class="language-flux">// Flux 查询基本结构
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; yield(name: &quot;result&quot;)
+</code></pre>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Q as Query
+    participant F1 as from()
+    participant F2 as range()
+    participant F3 as filter()
+    participant F4 as yield()
+    participant DB as InfluxDB
+    
+    Q-&gt;&gt;F1: 指定 bucket
+    F1-&gt;&gt;F2: 返回数据流
+    F2-&gt;&gt;F3: 过滤时间范围
+    F3-&gt;&gt;F4: 过滤 measurement/field
+    F4-&gt;&gt;DB: 执行查询
+    DB--&gt;&gt;F4: 返回结果
+    F4--&gt;&gt;Q: yield 输出
+</code></pre>
+<h3>核心函数</h3>
+<h4>1. from() - 数据源</h4>
+<pre><code class="language-flux">// 从指定 bucket 读取数据
+from(bucket: &quot;my-bucket&quot;)
+
+// 或指定多个 buckets（需要 join）
+from(bucket: &quot;bucket1&quot;)
+    |&gt; union(tables: [from(bucket: &quot;bucket2&quot;)])
+</code></pre>
+<h4>2. range() - 时间范围</h4>
+<pre><code class="language-flux">// 相对时间
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: -1h)      // 最近1小时
+    |&gt; range(start: -24h)     // 最近24小时
+    |&gt; range(start: -7d)      // 最近7天
+    |&gt; range(start: -1mo)     // 最近1个月
+
+// 绝对时间
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: 2024-01-01T00:00:00Z, stop: 2024-01-02T00:00:00Z)
+
+// 使用变量
+startTime = 2024-01-15T08:00:00Z
+stopTime = 2024-01-15T18:00:00Z
+
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: startTime, stop: stopTime)
+</code></pre>
+<h4>3. filter() - 数据过滤</h4>
+<pre><code class="language-flux">// 基本过滤
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+
+// 多条件过滤
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; 
+        r._measurement == &quot;cpu&quot; and 
+        r.host == &quot;server01&quot; and
+        (r._field == &quot;usage_user&quot; or r._field == &quot;usage_system&quot;)
+    )
+
+// 使用正则表达式
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r.host =~ /^server\d{2}$/)  // 匹配 server01, server02...
+    |&gt; filter(fn: (r) =&gt; r._measurement !~ /_test$/)  // 排除以 _test 结尾
+</code></pre>
+<h2>常用查询模式</h2>
+<h3>模式 1：基本时序查询</h3>
+<pre><code class="language-mermaid">flowchart LR
+    A[&quot;from()\n选择 bucket&quot;] --&gt; B[&quot;range()\n时间范围&quot;] --&gt; C[&quot;filter()\nmeasurement&quot;] --&gt; D[&quot;filter()\nfield&quot;] --&gt; E[&quot;yield()\n输出结果&quot;]
+    
+    style A fill:#e3f2fd
+    style B fill:#e8f5e9
+    style C fill:#fff3e0
+    style D fill:#fce4ec
+    style E fill:#f3e5f5
+</code></pre>
+<pre><code class="language-flux">// 查询最近1小时的 CPU 使用率
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; filter(fn: (r) =&gt; r.host == &quot;server01&quot;)
+</code></pre>
+<h3>模式 2：分组聚合</h3>
+<pre><code class="language-flux">// 按 host 分组，计算平均值
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; group(columns: [&quot;host&quot;])
+    |&gt; mean()
+</code></pre>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Raw[&quot;原始数据&quot;]
+        R1[&quot;host=server01, value=65&quot;]
+        R2[&quot;host=server01, value=70&quot;]
+        R3[&quot;host=server02, value=55&quot;]
+        R4[&quot;host=server02, value=60&quot;]
+    end
+    
+    subgraph Grouped[&quot;按 host 分组&quot;]
+        G1[&quot;server01: [65, 70]&quot;]
+        G2[&quot;server02: [55, 60]&quot;]
+    end
+    
+    subgraph Aggregated[&quot;聚合结果&quot;]
+        A1[&quot;server01: mean=67.5&quot;]
+        A2[&quot;server02: mean=57.5&quot;]
+    end
+    
+    Raw --&gt;|group()| Grouped
+    Grouped --&gt;|mean()| Aggregated
+</code></pre>
+<h3>模式 3：时间窗口聚合</h3>
+<pre><code class="language-flux">// 每5分钟计算平均 CPU 使用率
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; aggregateWindow(every: 5m, fn: mean)
+
+// 其他窗口函数
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -24h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; aggregateWindow(every: 1h, fn: max)       // 每小时最大值
+    |&gt; aggregateWindow(every: 1h, fn: min)       // 每小时最小值
+    |&gt; aggregateWindow(every: 1h, fn: sum)       // 每小时求和
+    |&gt; aggregateWindow(every: 1h, fn: count)     // 每小时计数
+    |&gt; aggregateWindow(every: 1h, fn: first)     // 每小时第一个值
+    |&gt; aggregateWindow(every: 1h, fn: last)      // 每小时最后一个值
+</code></pre>
+<pre><code class="language-mermaid">gantt
+    title 时间窗口聚合示例
+    dateFormat HH:mm
+    axisFormat %H:%M
+    
+    section 原始数据
+    P1 :10:01, 10:02
+    P2 :10:03, 10:04
+    P3 :10:06, 10:07
+    P4 :10:08, 10:09
+    
+    section 5分钟窗口
+    W1 :10:00, 10:05
+    W2 :10:05, 10:10
+</code></pre>
+<h2>聚合函数</h2>
+<h3>数学聚合</h3>
+<pre><code class="language-flux">// 基础统计
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; mean()           // 平均值
+    |&gt; median()         // 中位数
+    |&gt; stddev()         // 标准差
+    |&gt; variance()       // 方差
+    |&gt; mode()           // 众数
+    |&gt; spread()         // 最大值-最小值
+</code></pre>
+<h3>选择器函数</h3>
+<pre><code class="language-flux">// 极值查询
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; max()            // 最大值
+    |&gt; min()            // 最小值
+    |&gt; top(n: 10)       // 前10大值
+    |&gt; bottom(n: 10)    // 前10小值
+    |&gt; first()          // 第一个值
+    |&gt; last()           // 最后一个值
+    |&gt; unique(column: &quot;host&quot;)  // 去重
+</code></pre>
+<h3>百分位数</h3>
+<pre><code class="language-flux">// 计算百分位数
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -24h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;response_time&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;latency_ms&quot;)
+    |&gt; quantile(q: 0.50)  // P50 - 中位数
+    |&gt; quantile(q: 0.90)  // P90
+    |&gt; quantile(q: 0.95)  // P95
+    |&gt; quantile(q: 0.99)  // P99
+</code></pre>
+<pre><code class="language-mermaid">xychart-beta
+    title &quot;响应时间分布与百分位数&quot;
+    x-axis [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    y-axis &quot;累计百分比 %&quot;
+    line [0, 5, 15, 35, 60, 75, 85, 92, 97, 99, 100]
+    
+    annotation P50: 30
+    annotation P90: 80
+    annotation P95: 90
+    annotation P99: 95
+</code></pre>
+<h2>数据转换</h2>
+<h3>列操作</h3>
+<pre><code class="language-flux">// 选择特定列
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; keep(columns: [&quot;_time&quot;, &quot;_value&quot;, &quot;host&quot;])
+
+// 删除列
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; drop(columns: [&quot;region&quot;, &quot;zone&quot;])
+
+// 重命名列
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; rename(columns: {usage_user: &quot;cpu_user&quot;, usage_system: &quot;cpu_system&quot;})
+
+// 创建新列
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; map(fn: (r) =&gt; ({r with total_usage: r.usage_user + r.usage_system}))
+</code></pre>
+<h3>数据类型转换</h3>
+<pre><code class="language-flux">// 类型转换函数
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; toFloat()      // 转换为浮点数
+    |&gt; toInt()        // 转换为整数
+    |&gt; toString()     // 转换为字符串
+    |&gt; toBool()       // 转换为布尔值
+    |&gt; toUInt()       // 转换为无符号整数
+</code></pre>
+<h3>数学运算</h3>
+<pre><code class="language-flux">// 基本运算
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; map(fn: (r) =&gt; ({r with 
+        // 计算总 CPU 使用率
+        total_usage: r.usage_user + r.usage_system + r.usage_iowait,
+        
+        // 转换为百分比
+        usage_percent: r._value * 100.0,
+        
+        // 条件运算
+        is_high: if r._value &gt; 80.0 then true else false
+    }))
+</code></pre>
+<h2>高级功能</h2>
+<h3>1. 多表 Join</h3>
+<pre><code class="language-flux">// 将 CPU 和内存数据 join 在一起
+cpu = from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; aggregateWindow(every: 1m, fn: mean)
+    |&gt; set(key: &quot;_field&quot;, value: &quot;cpu_usage&quot;)
+
+memory = from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;memory&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;used_percent&quot;)
+    |&gt; aggregateWindow(every: 1m, fn: mean)
+    |&gt; set(key: &quot;_field&quot;, value: &quot;mem_usage&quot;)
+
+// 按时间和 host join
+join(tables: {cpu: cpu, mem: memory}, on: [&quot;_time&quot;, &quot;host&quot;])
+    |&gt; map(fn: (r) =&gt; ({r with 
+        combined_load: r.cpu_usage + r.mem_usage
+    }))
+</code></pre>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Table1[&quot;CPU Table&quot;]
+        C1[&quot;time=T1, host=A, cpu=60&quot;]
+        C2[&quot;time=T2, host=A, cpu=65&quot;]
+    end
+    
+    subgraph Table2[&quot;Memory Table&quot;]
+        M1[&quot;time=T1, host=A, mem=70&quot;]
+        M2[&quot;time=T2, host=A, mem=75&quot;]
+    end
+    
+    subgraph Joined[&quot;Join Result&quot;]
+        J1[&quot;time=T1, host=A, cpu=60, mem=70&quot;]
+        J2[&quot;time=T2, host=A, cpu=65, mem=75&quot;]
+    end
+    
+    Table1 --&gt;|join on [time, host]| Joined
+    Table2 --&gt;|join on [time, host]| Joined
+</code></pre>
+<h3>2. Union 合并</h3>
+<pre><code class="language-flux">// 合并多个 bucket 的数据
+prod = from(bucket: &quot;production&quot;)
+    |&gt; range(start: -1h)
+    |&gt; set(key: &quot;env&quot;, value: &quot;production&quot;)
+
+staging = from(bucket: &quot;staging&quot;)
+    |&gt; range(start: -1h)
+    |&gt; set(key: &quot;env&quot;, value: &quot;staging&quot;)
+
+union(tables: [prod, staging])
+    |&gt; group(columns: [&quot;env&quot;])
+    |&gt; mean()
+</code></pre>
+<h3>3. 条件逻辑</h3>
+<pre><code class="language-flux">// if/else 条件
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; map(fn: (r) =&gt; ({r with 
+        status: if r._value &lt; 50 then &quot;normal&quot;
+                else if r._value &lt; 80 then &quot;warning&quot;
+                else &quot;critical&quot;
+    }))
+
+// 条件过滤
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; 
+        if r.env == &quot;production&quot; then r._value &gt; 90
+        else r._value &gt; 95
+    )
+</code></pre>
+<h3>4. 窗口函数</h3>
+<pre><code class="language-flux">// 滑动窗口
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; movingAverage(n: 5)           // 5点移动平均
+    |&gt; exponentialMovingAverage(n: 5) // 指数移动平均
+    |&gt; derivative(unit: 1s)            // 求导（变化率）
+    |&gt; difference()                    // 差分
+    |&gt; cumulativeSum()                 // 累计求和
+</code></pre>
+<h2>自定义函数</h2>
+<h3>定义可复用函数</h3>
+<pre><code class="language-flux">// 定义一个函数：计算 CPU 负载状态
+loadStatus = (table=&lt;-, warning=80.0, critical=95.0) =&gt; {
+    table
+        |&gt; map(fn: (r) =&gt; ({r with 
+            load_status: if r._value &gt;= critical then &quot;critical&quot;
+                        else if r._value &gt;= warning then &quot;warning&quot;
+                        else &quot;normal&quot;
+        }))
+}
+
+// 使用自定义函数
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; loadStatus(warning: 75.0, critical: 90.0)
+</code></pre>
+<h3>高级自定义函数</h3>
+<pre><code class="language-flux">// 计算同比环比
+compareMetrics = (table=&lt;-, offset=duration(v: &quot;1w&quot;)) =&gt; {
+    current = table
+    
+    previous = table
+        |&gt; timeShift(duration: offset)
+        |&gt; set(key: &quot;_field&quot;, value: &quot;previous&quot;)
+    
+    join(tables: {current: current, previous: previous}, on: [&quot;_time&quot;, &quot;host&quot;])
+        |&gt; map(fn: (r) =&gt; ({r with 
+            change: r._value - r.previous,
+            change_percent: (r._value - r.previous) / r.previous * 100.0
+        }))
+}
+
+// 使用
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -24h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; compareMetrics(offset: duration(v: &quot;1w&quot;))
+</code></pre>
+<h2>变量与参数</h2>
+<h3>查询参数</h3>
+<pre><code class="language-flux">// 定义变量
+bucket = &quot;monitoring&quot;
+measurement = &quot;cpu&quot;
+field = &quot;usage_user&quot;
+host = &quot;server01&quot;
+timeRange = -1h
+
+// 使用变量
+from(bucket: bucket)
+    |&gt; range(start: timeRange)
+    |&gt; filter(fn: (r) =&gt; r._measurement == measurement)
+    |&gt; filter(fn: (r) =&gt; r._field == field)
+    |&gt; filter(fn: (r) =&gt; r.host == host)
+</code></pre>
+<h3>动态参数（Dashboard 用）</h3>
+<pre><code class="language-flux">// 使用 v: 语法引用外部参数（如 Grafana 变量）
+from(bucket: v.bucket)
+    |&gt; range(start: v.timeRangeStart, stop: v.timeRangeStop)
+    |&gt; filter(fn: (r) =&gt; r._measurement == v.measurement)
+    |&gt; filter(fn: (r) =&gt; r.host =~ /${host:regex}/)
+</code></pre>
+<h2>实际应用案例</h2>
+<h3>案例 1：服务器资源监控大盘</h3>
+<pre><code class="language-flux">// 最近1小时各服务器的平均资源使用率
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot; or r._measurement == &quot;memory&quot; or r._measurement == &quot;disk&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot; or r._field == &quot;used_percent&quot;)
+    |&gt; group(columns: [&quot;host&quot;, &quot;_measurement&quot;])
+    |&gt; aggregateWindow(every: 5m, fn: mean)
+    |&gt; pivot(rowKey:[&quot;_time&quot;], columnKey: [&quot;_measurement&quot;], valueColumn: &quot;_value&quot;)
+</code></pre>
+<h3>案例 2：SLI/SLO 计算</h3>
+<pre><code class="language-flux">// 计算过去30天的可用性SLI
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -30d)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;http_requests&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;request_count&quot;)
+    |&gt; group()
+    |&gt; aggregateWindow(every: 1h, fn: sum)
+    |&gt; map(fn: (r) =&gt; ({r with 
+        is_available: if r.status == &quot;200&quot; then 1 else 0
+    }))
+    |&gt; cumulativeSum(columns: [&quot;is_available&quot;])
+    |&gt; map(fn: (r) =&gt; ({r with 
+        availability: float(v: r.is_available) / float(v: r.request_count) * 100.0
+    }))
+</code></pre>
+<h3>案例 3：异常检测</h3>
+<pre><code class="language-flux">// 使用标准差检测异常值
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -7d)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)
+    |&gt; filter(fn: (r) =&gt; r._field == &quot;usage_user&quot;)
+    |&gt; group(columns: [&quot;host&quot;])
+    |&gt; aggregateWindow(every: 1h, fn: mean)
+    |&gt; stddev()
+    |&gt; map(fn: (r) =&gt; ({r with 
+        threshold_high: r._value + 2.0 * r.stddev,
+        threshold_low: r._value - 2.0 * r.stddev
+    }))
+</code></pre>
+<h2>性能优化</h2>
+<h3>查询优化建议</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Optimization[&quot;Flux 查询优化&quot;]
+        O1[&quot;1. 尽早过滤\nrange() 放最前面&quot;]
+        O2[&quot;2. 限制数据量\n使用 limit()&quot;]
+        O3[&quot;3. 合理分组\n避免过高基数&quot;]
+        O4[&quot;4. 窗口聚合\n减少数据点数量&quot;]
+        O5[&quot;5. 缓存结果\n避免重复查询&quot;]
+    end
+    
+    style Optimization fill:#e8f5e9
+</code></pre>
+<pre><code class="language-flux">// 优化前：低效查询
+from(bucket: &quot;monitoring&quot;)
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)  // 先过滤
+    |&gt; range(start: -1h)                           // 后限制时间
+
+// 优化后：高效查询
+from(bucket: &quot;monitoring&quot;)
+    |&gt; range(start: -1h)                           // 先限制时间范围
+    |&gt; filter(fn: (r) =&gt; r._measurement == &quot;cpu&quot;)  // 再过滤
+    |&gt; limit(n: 1000)                              // 限制返回数量
+</code></pre>
+<hr>
+<p>掌握 Flux 后，下一篇将介绍传统的 InfluxQL 查询语言。</p>

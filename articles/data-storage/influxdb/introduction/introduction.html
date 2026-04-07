@@ -1,0 +1,414 @@
+<h1>InfluxDB 入门介绍</h1>
+<h2>什么是 InfluxDB</h2>
+<p><strong>InfluxDB</strong> 是一个由 InfluxData 开发的开源<strong>时序数据库（Time Series Database, TSDB）</strong>，专门设计用于处理高写入和查询负载的时间序列数据。</p>
+<h3>时序数据的特点</h3>
+<p>时序数据是指按时间顺序索引的数据点序列，具有以下特点：</p>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>时间戳为核心</strong></td>
+<td>每个数据点都与一个时间戳关联</td>
+</tr>
+<tr>
+<td><strong>高写入频率</strong></td>
+<td>通常每秒写入数千至数百万个数据点</td>
+</tr>
+<tr>
+<td><strong>极少更新</strong></td>
+<td>数据一旦写入，很少修改或删除</td>
+</tr>
+<tr>
+<td><strong>时间范围查询</strong></td>
+<td>查询通常基于时间范围（最近1小时、1天等）</td>
+</tr>
+<tr>
+<td><strong>数据价值递减</strong></td>
+<td>越新的数据价值越高，旧数据常需聚合降采样</td>
+</tr>
+</tbody></table>
+<h3>InfluxDB 核心优势</h3>
+<pre><code class="language-mermaid">mindmap
+  root((InfluxDB 优势))
+    高性能
+      每秒百万级写入
+      毫秒级查询响应
+      高效压缩存储
+    易用性
+      类SQL查询语言
+      简洁的数据模型
+      丰富的客户端库
+    可扩展性
+      水平扩展支持
+      集群部署能力
+      云原生架构
+    生态系统
+      Telegraf 数据采集
+      Grafana 可视化
+      Flux 数据处理
+</code></pre>
+<h2>InfluxDB 架构概览</h2>
+<h3>系统架构图</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph DataCollection[&quot;数据采集层&quot;]
+        Telegraf[&quot;Telegraf Agent&quot;]
+        ClientSDK[&quot;Client SDKs&quot;]
+        HTTPAPI[&quot;HTTP API&quot;]
+    end
+    
+    subgraph StorageEngine[&quot;存储引擎&quot;]
+        WriteAheadLog[&quot;WAL&lt;br/&gt;预写日志&quot;]
+        Cache[&quot;内存 Cache&quot;]
+        TSMFiles[&quot;TSM 文件&lt;br/&gt;Time-Structured Merge Tree&quot;]
+    end
+    
+    subgraph QueryEngine[&quot;查询引擎&quot;]
+        FluxEngine[&quot;Flux 查询引擎&quot;]
+        InfluxQLEngine[&quot;InfluxQL 引擎&quot;]
+        QueryOptimizer[&quot;查询优化器&quot;]
+    end
+    
+    subgraph MetaStore[&quot;元数据存储&quot;]
+        BucketMeta[&quot;Bucket 元数据&quot;]
+        UserMeta[&quot;用户/权限元数据&quot;]
+        RP[&quot;保留策略&quot;]
+    end
+    
+    Telegraf --&gt; |Line Protocol| HTTPAPI
+    ClientSDK --&gt; |HTTP| HTTPAPI
+    HTTPAPI --&gt; WriteAheadLog
+    WriteAheadLog --&gt; Cache
+    Cache --&gt; TSMFiles
+    TSMFiles --&gt; QueryEngine
+    MetaStore --&gt; QueryEngine
+</code></pre>
+<h3>存储引擎详解</h3>
+<p>InfluxDB 使用自定义的 <strong>TSM（Time-Structured Merge Tree）</strong> 存储引擎：</p>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph WritePath[&quot;写入路径&quot;]
+        A[&quot;数据写入&quot;] --&gt; B[&quot;WAL&lt;br/&gt;持久化保障&quot;]
+        B --&gt; C[&quot;内存 Cache&lt;br/&gt;快速写入&quot;]
+        C --&gt; D[&quot;达到阈值?&quot;]
+        D --&gt;|是| E[&quot;刷盘到 TSM&quot;]
+        D --&gt;|否| C
+    end
+    
+    subgraph TSMStructure[&quot;TSM 文件结构&quot;]
+        F[&quot;Header&quot;] --&gt; G[&quot;索引块&quot;]
+        G --&gt; H[&quot;数据块&lt;br/&gt;压缩存储&quot;]
+        H --&gt; I[&quot;Footer&lt;br/&gt;索引偏移&quot;]
+    end
+    
+    E --&gt; TSMStructure
+</code></pre>
+<h2>核心概念</h2>
+<h3>数据模型</h3>
+<p>InfluxDB 的数据模型由四个核心概念组成：</p>
+<pre><code class="language-mermaid">graph TB
+    subgraph DataModel[&quot;InfluxDB 数据模型&quot;]
+        Bucket[&quot;Bucket&lt;br/&gt;数据库容器&quot;]
+        Measurement[&quot;Measurement&lt;br/&gt;数据表&quot;]
+        Field[&quot;Field&lt;br/&gt;数据值&quot;]
+        Tag[&quot;Tag&lt;br/&gt;索引维度&quot;]
+        Timestamp[&quot;Timestamp&lt;br/&gt;时间戳&quot;]
+    end
+    
+    Bucket --&gt; |包含多个| Measurement
+    Measurement --&gt; |包含多个| Field
+    Measurement --&gt; |包含多个| Tag
+    Measurement --&gt; |每个点必须有| Timestamp
+    
+    style Bucket fill:#e1f5fe
+    style Measurement fill:#fff3e0
+    style Field fill:#e8f5e9
+    style Tag fill:#fce4ec
+    style Timestamp fill:#f3e5f5
+</code></pre>
+<h4>1. Bucket（存储桶）</h4>
+<p>Bucket 是数据的逻辑容器，相当于传统数据库中的 database：</p>
+<pre><code>┌─────────────────────────────────────────┐
+│              Bucket: &quot;monitoring&quot;       │
+│  ┌─────────────┐  ┌─────────────┐      │
+│  │ Measurement │  │ Measurement │      │
+│  │   &quot;cpu&quot;     │  │  &quot;memory&quot;   │      │
+│  └─────────────┘  └─────────────┘      │
+│  ┌─────────────┐  ┌─────────────┐      │
+│  │ Measurement │  │ Measurement │      │
+│  │   &quot;disk&quot;    │  │  &quot;network&quot;  │      │
+│  └─────────────┘  └─────────────┘      │
+└─────────────────────────────────────────┘
+</code></pre>
+<h4>2. Measurement（测量值）</h4>
+<p>Measurement 是对相关数据的逻辑分组，相当于表：</p>
+<pre><code class="language-sql">-- 创建 measurement 的示例
+-- 不需要显式创建，写入数据时自动创建
+
+-- cpu measurement 示例数据
+name: cpu
+time                host        region  usage_user  usage_system
+----                ----        ------  ----------  ------------
+1705315200000000000 server01    us-west  65.2        12.3
+1705315260000000000 server01    us-west  68.1        11.8
+1705315320000000000 server02    eu-east  42.5        15.6
+</code></pre>
+<h4>3. Field（字段）</h4>
+<p>Field 是实际的数据值，<strong>不会被索引</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>数据类型</td>
+<td>Float、Integer、String、Boolean</td>
+</tr>
+<tr>
+<td>索引</td>
+<td>❌ 无索引</td>
+</tr>
+<tr>
+<td>必需</td>
+<td>✅ 每个点至少一个 field</td>
+</tr>
+<tr>
+<td>数量</td>
+<td>一个点可以有多个 fields</td>
+</tr>
+</tbody></table>
+<h4>4. Tag（标签）</h4>
+<p>Tag 是元数据维度，<strong>会被索引</strong>，用于快速过滤和分组：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>数据类型</td>
+<td>String（只能是字符串）</td>
+</tr>
+<tr>
+<td>索引</td>
+<td>✅ 有索引</td>
+</tr>
+<tr>
+<td>必需</td>
+<td>❌ 可选</td>
+</tr>
+<tr>
+<td>最佳实践</td>
+<td>控制基数（cardinality）</td>
+</tr>
+</tbody></table>
+<pre><code class="language-mermaid">pie title Tag vs Field 使用场景
+    &quot;使用 Tag（索引维度）&quot; : 40
+    &quot;使用 Field（数据值）&quot; : 60
+</code></pre>
+<h3>数据点（Point）结构</h3>
+<p>一个完整的数据点示例：</p>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                         Data Point                              │
+├─────────────────────────────────────────────────────────────────┤
+│  Measurement: cpu                                               │
+├──────────┬──────────┬─────────────┬──────────────┬──────────────┤
+│   Time   │   Host   │   Region    │  usage_user  │ usage_system │
+├──────────┼──────────┼─────────────┼──────────────┼──────────────┤
+│  Tag     │   Tag    │    Tag      │    Field     │    Field     │
+│          │          │             │    65.2      │    12.3      │
+├──────────┴──────────┴─────────────┴──────────────┴──────────────┤
+│  Timestamp: 1705315200000000000 (Unix nanoseconds)              │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2>InfluxDB 版本对比</h2>
+<pre><code class="language-mermaid">timeline
+    title InfluxDB 版本演进
+    2013 : InfluxDB 0.x
+         : 首个开源版本
+         : 基于 LevelDB
+    2016 : InfluxDB 1.x
+         : TSM 存储引擎
+         : InfluxQL 查询语言
+         : 企业版集群支持
+    2019 : InfluxDB 2.x
+         : Flux 查询语言
+         : 统一开源/企业版
+         : 全新 UI 界面
+    2024 : InfluxDB 3.x
+         : Apache Arrow 内核
+         : 列式存储
+         : 亚秒级查询性能
+</code></pre>
+<h3>版本选择建议</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐版本</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>新项目开发</td>
+<td>2.x</td>
+<td>功能完善，生态成熟</td>
+</tr>
+<tr>
+<td>大规模生产</td>
+<td>2.x 企业版 / 3.x</td>
+<td>集群支持，更高性能</td>
+</tr>
+<tr>
+<td>现有 1.x 维护</td>
+<td>1.x</td>
+<td>平滑升级路径</td>
+</tr>
+<tr>
+<td>边缘计算</td>
+<td>2.x OSS</td>
+<td>轻量，易部署</td>
+</tr>
+</tbody></table>
+<h2>典型应用场景</h2>
+<h3>场景 1：DevOps 监控</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph Sources[&quot;数据源&quot;]
+        Servers[&quot;服务器&quot;]
+        Containers[&quot;容器&quot;]
+        Apps[&quot;应用服务&quot;]
+    end
+    
+    subgraph Collection[&quot;采集层&quot;]
+        Telegraf1[&quot;Telegraf&quot;]
+    end
+    
+    subgraph Storage[&quot;存储层&quot;]
+        InfluxDB[&quot;InfluxDB&quot;]
+    end
+    
+    subgraph Visualization[&quot;可视化&quot;]
+        Grafana[&quot;Grafana Dashboard&quot;]
+        Alerts[&quot;告警系统&quot;]
+    end
+    
+    Servers --&gt; Telegraf1
+    Containers --&gt; Telegraf1
+    Apps --&gt; Telegraf1
+    Telegraf1 --&gt;|写入| InfluxDB
+    InfluxDB --&gt;|查询| Grafana
+    InfluxDB --&gt;|查询| Alerts
+</code></pre>
+<p><strong>监控指标示例：</strong></p>
+<ul>
+<li>CPU 使用率、内存占用</li>
+<li>磁盘 I/O、网络流量</li>
+<li>应用响应时间、错误率</li>
+</ul>
+<h3>场景 2：IoT 传感器数据</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Devices[&quot;物联网设备&quot;]
+        Temp[&quot;温度传感器&quot;]
+        Humidity[&quot;湿度传感器&quot;]
+        Pressure[&quot;压力传感器&quot;]
+    end
+    
+    subgraph Gateway[&quot;边缘网关&quot;]
+        MQTT[&quot;MQTT Broker&quot;]
+        EdgeProcessor[&quot;边缘处理&quot;]
+    end
+    
+    subgraph Cloud[&quot;云平台&quot;]
+        InfluxDBCloud[&quot;InfluxDB Cloud&quot;]
+        Analytics[&quot;数据分析&quot;]
+    end
+    
+    Temp --&gt; MQTT
+    Humidity --&gt; MQTT
+    Pressure --&gt; MQTT
+    MQTT --&gt; EdgeProcessor
+    EdgeProcessor --&gt; InfluxDBCloud
+    InfluxDBCloud --&gt; Analytics
+</code></pre>
+<p><strong>IoT 数据特点：</strong></p>
+<ul>
+<li>高频率采集（每秒/每分钟）</li>
+<li>海量设备接入</li>
+<li>地理位置分布</li>
+<li>边缘预处理需求</li>
+</ul>
+<h3>场景 3：金融实时分析</h3>
+<table>
+<thead>
+<tr>
+<th>应用</th>
+<th>数据类型</th>
+<th>延迟要求</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>股票行情</td>
+<td>价格、成交量</td>
+<td>&lt; 100ms</td>
+</tr>
+<tr>
+<td>风控监测</td>
+<td>交易异常检测</td>
+<td>&lt; 1s</td>
+</tr>
+<tr>
+<td>量化策略</td>
+<td>历史回测</td>
+<td>批量查询</td>
+</tr>
+</tbody></table>
+<h2>快速体验</h2>
+<h3>使用 Docker 启动</h3>
+<pre><code class="language-bash"># 拉取并运行 InfluxDB 2.x
+docker run -d \
+  --name influxdb \
+  -p 8086:8086 \
+  -v influxdb-data:/var/lib/influxdb2 \
+  influxdb:2.7
+
+# 查看容器状态
+docker ps
+
+# 获取初始 Token
+docker exec influxdb influx auth list
+</code></pre>
+<h3>第一条数据写入</h3>
+<pre><code class="language-bash"># 使用 influx CLI 写入测试数据
+influx write \
+  --bucket my-bucket \
+  --precision s \
+  &#39;temperature,location=room1,device=sensor01 value=23.5&#39;
+
+# 查询数据
+influx query &#39;
+from(bucket: &quot;my-bucket&quot;)
+  |&gt; range(start: -1h)
+  |&gt; filter(fn: (r) =&gt; r._measurement == &quot;temperature&quot;)
+&#39;
+</code></pre>
+<h2>总结</h2>
+<p>InfluxDB 作为专业的时序数据库，通过以下特性解决时序数据挑战：</p>
+<ol>
+<li><strong>高效存储</strong> - TSM 引擎实现高压缩比和快速写入</li>
+<li><strong>灵活查询</strong> - 支持 InfluxQL 和 Flux 两种查询语言</li>
+<li><strong>丰富生态</strong> - 与 Telegraf、Grafana 无缝集成</li>
+<li><strong>水平扩展</strong> - 支持分布式部署应对海量数据</li>
+</ol>
+<p>在下一篇文章中，我们将详细介绍 InfluxDB 的安装和部署方法。</p>
+<hr>
+<h2>参考资源</h2>
+<ul>
+<li><a href="https://docs.influxdata.com/">InfluxDB 官方文档</a></li>
+<li><a href="https://github.com/influxdata/influxdb">InfluxDB GitHub</a></li>
+<li><a href="https://www.influxdata.com/time-series-database/">Time Series Database 选型指南</a></li>
+</ul>

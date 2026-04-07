@@ -1,0 +1,699 @@
+<h1>InfluxDB 备份与恢复实战</h1>
+<h2>备份策略概述</h2>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph BackupStrategy[&quot;备份策略层次&quot;]
+        L1[&quot;1. 实时复制\n高可用集群&quot;]
+        L2[&quot;2. 增量备份\n每小时/每日&quot;]
+        L3[&quot;3. 全量备份\n每周/每月&quot;]
+        L4[&quot;4. 归档存储\n长期保留&quot;]
+    end
+    
+    subgraph Recovery[&quot;恢复目标&quot;]
+        R1[&quot;RPO\n恢复点目标\n&lt; 1小时&quot;]
+        R2[&quot;RTO\n恢复时间目标\n&lt; 30分钟&quot;]
+    end
+    
+    L1 --&gt; R1
+    L2 --&gt; R1
+    L3 --&gt; R2
+    L4 --&gt; R2
+    
+    style BackupStrategy fill:#e3f2fd
+    style Recovery fill:#e8f5e9
+</code></pre>
+<h2>InfluxDB 2.x 备份恢复</h2>
+<h3>备份类型</h3>
+<pre><code class="language-mermaid">flowchart LR
+    subgraph BackupTypes[&quot;备份类型&quot;]
+        B1[&quot;元数据备份\nBuckets, Tokens, Dashboards, Tasks&quot;]
+        B2[&quot;数据备份\n时序数据&quot;]
+        B3[&quot;全量备份\n元数据 + 数据&quot;]
+    end
+    
+    style BackupTypes fill:#fff3e0
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>备份类型</th>
+<th>命令</th>
+<th>内容</th>
+<th>恢复速度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>元数据</strong></td>
+<td><code>backup --bucket-id</code></td>
+<td>仅 schema</td>
+<td>快</td>
+</tr>
+<tr>
+<td><strong>数据</strong></td>
+<td><code>backup</code></td>
+<td>时序数据</td>
+<td>中等</td>
+</tr>
+<tr>
+<td><strong>全量</strong></td>
+<td><code>backup</code> + 所有 buckets</td>
+<td>完整实例</td>
+<td>慢</td>
+</tr>
+</tbody></table>
+<h3>CLI 备份操作</h3>
+<pre><code class="language-bash"># 1. 全量备份（所有 buckets）
+influx backup /backup/full-backup-$(date +%Y%m%d) \
+    --org my-org \
+    --token YOUR_OPERATOR_TOKEN
+
+# 2. 备份指定 bucket
+influx backup /backup/bucket-specific \
+    --bucket my-bucket \
+    --org my-org \
+    --token YOUR_OPERATOR_TOKEN
+
+# 3. 增量备份（从指定时间开始）
+influx backup /backup/incremental \
+    --bucket my-bucket \
+    --start 2024-01-01T00:00:00Z \
+    --stop 2024-01-02T00:00:00Z \
+    --org my-org
+
+# 4. 仅备份元数据
+influx backup /backup/metadata-only \
+    --bucket my-bucket \
+    --org my-org \
+    --skip-bucket-config  # 不包含 bucket 配置
+</code></pre>
+<h3>自动化备份脚本</h3>
+<pre><code class="language-bash">#!/bin/bash
+# influxdb-backup.sh
+
+set -e
+
+# 配置
+INFLUX_TOKEN=&quot;${INFLUX_TOKEN:-your-operator-token}&quot;
+INFLUX_ORG=&quot;${INFLUX_ORG:-my-org}&quot;
+BACKUP_BASE=&quot;/backup/influxdb&quot;
+RETENTION_DAYS=30
+S3_BUCKET=&quot;s3://my-backup-bucket/influxdb&quot;
+
+# 创建备份目录
+DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_DIR=&quot;${BACKUP_BASE}/${DATE}&quot;
+mkdir -p &quot;$BACKUP_DIR&quot;
+
+log() {
+    echo &quot;[$(date &#39;+%Y-%m-%d %H:%M:%S&#39;)] $1&quot;
+}
+
+# 执行备份
+log &quot;Starting InfluxDB backup...&quot;
+influx backup &quot;$BACKUP_DIR&quot; \
+    --org &quot;$INFLUX_ORG&quot; \
+    --token &quot;$INFLUX_TOKEN&quot; \
+    2&gt;&gt; &quot;$BACKUP_DIR/backup.log&quot;
+
+if [ $? -eq 0 ]; then
+    log &quot;Backup completed: $BACKUP_DIR&quot;
+    
+    # 压缩备份
+    log &quot;Compressing backup...&quot;
+    tar -czf &quot;${BACKUP_DIR}.tar.gz&quot; -C &quot;$BACKUP_BASE&quot; &quot;$DATE&quot;
+    rm -rf &quot;$BACKUP_DIR&quot;
+    
+    # 上传到 S3
+    log &quot;Uploading to S3...&quot;
+    aws s3 cp &quot;${BACKUP_DIR}.tar.gz&quot; &quot;$S3_BUCKET/&quot; \
+        --storage-class STANDARD_IA
+    
+    # 删除本地压缩文件
+    rm &quot;${BACKUP_DIR}.tar.gz&quot;
+    
+    # 清理旧备份（本地）
+    log &quot;Cleaning up local backups older than $RETENTION_DAYS days...&quot;
+    find &quot;$BACKUP_BASE&quot; -name &quot;*.tar.gz&quot; -mtime +$RETENTION_DAYS -delete
+    
+    # 清理 S3 旧备份
+    log &quot;Cleaning up S3 backups...&quot;
+    aws s3 ls &quot;$S3_BUCKET/&quot; | while read -r line; do
+        file_date=$(echo &quot;$line&quot; | awk &#39;{print $1}&#39;)
+        file_name=$(echo &quot;$line&quot; | awk &#39;{print $4}&#39;)
+        
+        # 解析日期并检查是否超过保留期
+        file_timestamp=$(date -d &quot;$file_date&quot; +%s)
+        cutoff_timestamp=$(date -d &quot;$RETENTION_DAYS days ago&quot; +%s)
+        
+        if [ &quot;$file_timestamp&quot; -lt &quot;$cutoff_timestamp&quot; ]; then
+            log &quot;Deleting old backup: $file_name&quot;
+            aws s3 rm &quot;$S3_BUCKET/$file_name&quot;
+        fi
+    done
+    
+    log &quot;Backup process completed successfully!&quot;
+else
+    log &quot;Backup failed! Check logs at $BACKUP_DIR/backup.log&quot;
+    exit 1
+fi
+</code></pre>
+<h3>Python 备份管理</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;
+InfluxDB 备份管理工具
+&quot;&quot;&quot;
+import os
+import subprocess
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Optional
+import boto3
+from dataclasses import dataclass
+
+@dataclass
+class BackupConfig:
+    influx_url: str = &quot;http://localhost:8086&quot;
+    influx_token: str = &quot;&quot;
+    influx_org: str = &quot;my-org&quot;
+    backup_base_path: str = &quot;/backup/influxdb&quot;
+    s3_bucket: str = &quot;&quot;
+    retention_days: int = 30
+
+
+class InfluxDBBackupManager:
+    def __init__(self, config: BackupConfig):
+        self.config = config
+        self.s3_client = boto3.client(&#39;s3&#39;) if config.s3_bucket else None
+        
+    def create_backup(
+        self, 
+        backup_name: Optional[str] = None,
+        bucket: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None
+    ) -&gt; str:
+        &quot;&quot;&quot;创建备份&quot;&quot;&quot;
+        timestamp = datetime.now().strftime(&quot;%Y%m%d_%H%M%S&quot;)
+        backup_name = backup_name or f&quot;backup_{timestamp}&quot;
+        backup_path = Path(self.config.backup_base_path) / backup_name
+        backup_path.mkdir(parents=True, exist_ok=True)
+        
+        # 构建备份命令
+        cmd = [
+            &quot;influx&quot;, &quot;backup&quot;, str(backup_path),
+            &quot;--org&quot;, self.config.influx_org,
+            &quot;--token&quot;, self.config.influx_token
+        ]
+        
+        if bucket:
+            cmd.extend([&quot;--bucket&quot;, bucket])
+        if start_time:
+            cmd.extend([&quot;--start&quot;, start_time])
+        if end_time:
+            cmd.extend([&quot;--stop&quot;, end_time])
+        
+        # 执行备份
+        print(f&quot;🚀 Creating backup: {backup_name}&quot;)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            raise Exception(f&quot;Backup failed: {result.stderr}&quot;)
+        
+        print(f&quot;✅ Backup created: {backup_path}&quot;)
+        
+        # 创建备份清单
+        manifest = {
+            &quot;backup_name&quot;: backup_name,
+            &quot;created_at&quot;: datetime.now().isoformat(),
+            &quot;bucket&quot;: bucket or &quot;all&quot;,
+            &quot;start_time&quot;: start_time,
+            &quot;end_time&quot;: end_time,
+            &quot;path&quot;: str(backup_path)
+        }
+        
+        manifest_path = backup_path / &quot;manifest.json&quot;
+        with open(manifest_path, &#39;w&#39;) as f:
+            json.dump(manifest, f, indent=2)
+        
+        return str(backup_path)
+    
+    def compress_backup(self, backup_path: str) -&gt; str:
+        &quot;&quot;&quot;压缩备份&quot;&quot;&quot;
+        compressed_path = f&quot;{backup_path}.tar.gz&quot;
+        
+        print(f&quot;📦 Compressing backup...&quot;)
+        subprocess.run(
+            [&quot;tar&quot;, &quot;-czf&quot;, compressed_path, &quot;-C&quot;, 
+             self.config.backup_base_path, 
+             Path(backup_path).name],
+            check=True
+        )
+        
+        print(f&quot;✅ Compressed: {compressed_path}&quot;)
+        return compressed_path
+    
+    def upload_to_s3(self, local_path: str) -&gt; str:
+        &quot;&quot;&quot;上传到 S3&quot;&quot;&quot;
+        if not self.s3_client or not self.config.s3_bucket:
+            print(&quot;⚠️ S3 not configured, skipping upload&quot;)
+            return local_path
+        
+        s3_key = f&quot;influxdb/{Path(local_path).name}&quot;
+        
+        print(f&quot;☁️ Uploading to S3: {s3_key}&quot;)
+        self.s3_client.upload_file(
+            local_path,
+            self.config.s3_bucket,
+            s3_key,
+            ExtraArgs={&#39;StorageClass&#39;: &#39;STANDARD_IA&#39;}
+        )
+        
+        print(f&quot;✅ Uploaded to s3://{self.config.s3_bucket}/{s3_key}&quot;)
+        return s3_key
+    
+    def list_backups(self, include_remote: bool = True) -&gt; List[dict]:
+        &quot;&quot;&quot;列出所有备份&quot;&quot;&quot;
+        backups = []
+        
+        # 本地备份
+        backup_dir = Path(self.config.backup_base_path)
+        if backup_dir.exists():
+            for item in backup_dir.iterdir():
+                if item.suffix == &#39;.gz&#39; or item.is_dir():
+                    backups.append({
+                        &quot;name&quot;: item.name,
+                        &quot;location&quot;: &quot;local&quot;,
+                        &quot;path&quot;: str(item),
+                        &quot;size&quot;: item.stat().st_size if item.is_file() else None,
+                        &quot;modified&quot;: datetime.fromtimestamp(
+                            item.stat().st_mtime
+                        ).isoformat()
+                    })
+        
+        # 远程备份
+        if include_remote and self.s3_client:
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.config.s3_bucket,
+                Prefix=&quot;influxdb/&quot;
+            )
+            
+            for obj in response.get(&#39;Contents&#39;, []):
+                backups.append({
+                    &quot;name&quot;: Path(obj[&#39;Key&#39;]).name,
+                    &quot;location&quot;: &quot;s3&quot;,
+                    &quot;path&quot;: f&quot;s3://{self.config.s3_bucket}/{obj[&#39;Key&#39;]}&quot;,
+                    &quot;size&quot;: obj[&#39;Size&#39;],
+                    &quot;modified&quot;: obj[&#39;LastModified&#39;].isoformat()
+                })
+        
+        return backups
+    
+    def restore_backup(
+        self, 
+        backup_path: str,
+        target_org: Optional[str] = None,
+        target_bucket: Optional[str] = None
+    ):
+        &quot;&quot;&quot;恢复备份&quot;&quot;&quot;
+        # 如果是压缩文件，先解压
+        if backup_path.endswith(&#39;.tar.gz&#39;):
+            print(f&quot;📂 Extracting backup...&quot;)
+            extract_dir = backup_path.replace(&#39;.tar.gz&#39;, &#39;&#39;)
+            subprocess.run(
+                [&quot;tar&quot;, &quot;-xzf&quot;, backup_path, &quot;-C&quot;, self.config.backup_base_path],
+                check=True
+            )
+            backup_path = extract_dir
+        
+        # 执行恢复
+        cmd = [
+            &quot;influx&quot;, &quot;restore&quot;, backup_path,
+            &quot;--token&quot;, self.config.influx_token
+        ]
+        
+        if target_org:
+            cmd.extend([&quot;--org&quot;, target_org])
+        if target_bucket:
+            cmd.extend([&quot;--bucket&quot;, target_bucket])
+        
+        print(f&quot;🔄 Restoring from: {backup_path}&quot;)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            raise Exception(f&quot;Restore failed: {result.stderr}&quot;)
+        
+        print(f&quot;✅ Restore completed!&quot;)
+    
+    def cleanup_old_backups(self):
+        &quot;&quot;&quot;清理过期备份&quot;&quot;&quot;
+        cutoff_date = datetime.now() - timedelta(days=self.config.retention_days)
+        
+        # 清理本地备份
+        backup_dir = Path(self.config.backup_base_path)
+        if backup_dir.exists():
+            for item in backup_dir.iterdir():
+                modified = datetime.fromtimestamp(item.stat().st_mtime)
+                if modified &lt; cutoff_date:
+                    print(f&quot;🗑️ Deleting old backup: {item.name}&quot;)
+                    if item.is_file():
+                        item.unlink()
+                    else:
+                        import shutil
+                        shutil.rmtree(item)
+        
+        # 清理 S3 备份
+        if self.s3_client:
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.config.s3_bucket,
+                Prefix=&quot;influxdb/&quot;
+            )
+            
+            for obj in response.get(&#39;Contents&#39;, []):
+                if obj[&#39;LastModified&#39;].replace(tzinfo=None) &lt; cutoff_date:
+                    print(f&quot;🗑️ Deleting from S3: {obj[&#39;Key&#39;]}&quot;)
+                    self.s3_client.delete_object(
+                        Bucket=self.config.s3_bucket,
+                        Key=obj[&#39;Key&#39;]
+                    )
+
+
+# 使用示例
+if __name__ == &quot;__main__&quot;:
+    config = BackupConfig(
+        influx_token=os.getenv(&quot;INFLUX_TOKEN&quot;, &quot;your-token&quot;),
+        influx_org=&quot;my-org&quot;,
+        backup_base_path=&quot;/backup/influxdb&quot;,
+        s3_bucket=&quot;my-backup-bucket&quot;,
+        retention_days=30
+    )
+    
+    manager = InfluxDBBackupManager(config)
+    
+    # 创建备份
+    backup_path = manager.create_backup()
+    
+    # 压缩
+    compressed = manager.compress_backup(backup_path)
+    
+    # 上传
+    manager.upload_to_s3(compressed)
+    
+    # 清理旧备份
+    manager.cleanup_old_backups()
+</code></pre>
+<h2>恢复操作</h2>
+<h3>恢复流程</h3>
+<pre><code class="language-mermaid">sequenceDiagram
+    participant Admin as 管理员
+    participant Restore as Restore 流程
+    participant InfluxDB as InfluxDB
+    participant Verify as 验证
+    
+    Admin-&gt;&gt;Restore: 选择备份文件
+    Restore-&gt;&gt;Restore: 停止写入服务
+    Restore-&gt;&gt;InfluxDB: influx restore
+    InfluxDB--&gt;&gt;Restore: 恢复完成
+    Restore-&gt;&gt;Verify: 数据完整性检查
+    Verify--&gt;&gt;Restore: 验证通过
+    Restore--&gt;&gt;Admin: 恢复完成
+</code></pre>
+<h3>恢复命令详解</h3>
+<pre><code class="language-bash"># 1. 完整恢复（到新实例）
+influx restore /backup/full-backup-20240124 \
+    --token NEW_OPERATOR_TOKEN \
+    --org-mapping old-org-id:new-org-id
+
+# 2. 恢复到指定 bucket
+influx restore /backup/bucket-backup \
+    --bucket old-bucket-name \
+    --new-bucket restored-bucket \
+    --token OPERATOR_TOKEN
+
+# 3. 强制恢复（覆盖现有数据）
+influx restore /backup/backup-dir \
+    --force \
+    --token OPERATOR_TOKEN
+
+# 4. 恢复到新的 organization
+influx restore /backup/backup-dir \
+    --org old-org \
+    --new-org restored-org \
+    --token OPERATOR_TOKEN
+</code></pre>
+<h3>时间点恢复 (PITR)</h3>
+<pre><code class="language-bash">#!/bin/bash
+# point-in-time-recovery.sh
+
+BACKUP_DIR=&quot;/backup/influxdb&quot;
+TARGET_TIME=&quot;$1&quot;  # 格式: 2024-01-15T10:30:00Z
+
+if [ -z &quot;$TARGET_TIME&quot; ]; then
+    echo &quot;Usage: $0 &lt;ISO_TIMESTAMP&gt;&quot;
+    exit 1
+fi
+
+# 找到最近的完整备份
+LATEST_FULL=$(find &quot;$BACKUP_DIR&quot; -name &quot;full-*&quot; -type d | sort | tail -1)
+
+echo &quot;Using backup: $LATEST_FULL&quot;
+
+# 恢复完整备份
+influx restore &quot;$LATEST_FULL&quot; --token &quot;$INFLUX_TOKEN&quot;
+
+# 如果有增量备份在目标时间之后，需要重放
+# 注意：InfluxDB 原生不支持增量恢复，需要自定义逻辑
+
+# 方案：使用数据导出/导入实现 PITR
+influx query &#39;
+from(bucket: &quot;my-bucket&quot;)
+    |&gt; range(start: 2024-01-01T00:00:00Z, stop: &#39; &quot;$TARGET_TIME&quot; &#39;)
+    |&gt; to(bucket: &quot;recovery-bucket&quot;)
+&#39; --org my-org --token &quot;$INFLUX_TOKEN&quot;
+</code></pre>
+<h2>灾难恢复策略</h2>
+<h3>高可用架构</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph Primary[&quot;主数据中心&quot;]
+        P1[(&quot;InfluxDB\nPrimary&quot;)] --&gt;|实时同步| P2[(&quot;InfluxDB\nReplica&quot;)]
+    end
+    
+    subgraph Backup[&quot;备份系统&quot;]
+        B1[&quot;每小时增量&quot;]
+        B2[&quot;每日全量&quot;]
+        B3[&quot;S3 归档&quot;]
+    end
+    
+    subgraph DR[&quot;灾备中心&quot;]
+        D1[(&quot;InfluxDB\nStandby&quot;)]
+    end
+    
+    P2 --&gt; B1
+    P2 --&gt; B2
+    B2 --&gt; B3
+    B3 --&gt;|定期同步| D1
+    
+    style Primary fill:#e8f5e9
+    style DR fill:#fff3e0
+</code></pre>
+<h3>灾备演练脚本</h3>
+<pre><code class="language-bash">#!/bin/bash
+# disaster-recovery-drill.sh
+
+set -e
+
+echo &quot;🚨 Starting Disaster Recovery Drill...&quot;
+
+# 1. 模拟主节点故障
+echo &quot;Step 1: Simulating primary failure...&quot;
+docker-compose stop influxdb-primary
+
+# 2. 启动灾备实例
+echo &quot;Step 2: Activating DR instance...&quot;
+docker-compose up -d influxdb-dr
+
+# 3. 从 S3 下载最新备份
+echo &quot;Step 3: Downloading latest backup from S3...&quot;
+LATEST_BACKUP=$(aws s3 ls s3://dr-backup/influxdb/ | sort | tail -1 | awk &#39;{print $4}&#39;)
+aws s3 cp &quot;s3://dr-backup/influxdb/$LATEST_BACKUP&quot; /tmp/
+
+# 4. 恢复数据
+echo &quot;Step 4: Restoring data...&quot;
+tar -xzf &quot;/tmp/$LATEST_BACKUP&quot; -C /tmp/
+BACKUP_DIR=&quot;/tmp/$(basename $LATEST_BACKUP .tar.gz)&quot;
+influx restore &quot;$BACKUP_DIR&quot; --token &quot;$DR_INFLUX_TOKEN&quot;
+
+# 5. 验证数据完整性
+echo &quot;Step 5: Verifying data integrity...&quot;
+RECORD_COUNT=$(influx query &#39;from(bucket:&quot;my-bucket&quot;) |&gt; range(start:-1h) |&gt; count()&#39; --token &quot;$DR_INFLUX_TOKEN&quot; | tail -1)
+
+if [ &quot;$RECORD_COUNT&quot; -gt 0 ]; then
+    echo &quot;✅ Data verification passed: $RECORD_COUNT records&quot;
+else
+    echo &quot;❌ Data verification failed!&quot;
+    exit 1
+fi
+
+# 6. 切换流量
+echo &quot;Step 6: Switching traffic to DR...&quot;
+# 更新 DNS/负载均衡器配置
+# ...
+
+echo &quot;🎉 DR Drill completed successfully!&quot;
+</code></pre>
+<h2>跨版本迁移</h2>
+<h3>1.x → 2.x 迁移</h3>
+<pre><code class="language-mermaid">flowchart TB
+    subgraph V1[&quot;InfluxDB 1.x&quot;]
+        V1DB[(&quot;数据文件&quot;)]
+        V1CQ[&quot;连续查询&quot;]
+    end
+    
+    subgraph Migrate[&quot;迁移工具&quot;]
+        Upgrade[&quot;influxd upgrade&quot;]
+        Export[&quot;导出数据&quot;]
+    end
+    
+    subgraph V2[&quot;InfluxDB 2.x&quot;]
+        V2DB[(&quot;新实例&quot;)]
+        V2Task[&quot;Flux Tasks&quot;]
+    end
+    
+    V1DB --&gt; Upgrade
+    V1CQ --&gt;|手动转换| V2Task
+    Upgrade --&gt; V2DB
+    Export --&gt; V2DB
+</code></pre>
+<pre><code class="language-bash"># 方法 1: 自动升级工具
+influxd upgrade \
+    --bolt-path ~/.influxdbv2/influxd.bolt \
+    --engine-path ~/.influxdbv2/engine \
+    --config-file /etc/influxdb/influxdb.conf \
+    --username admin \
+    --password admin123 \
+    --org my-org \
+    --bucket default \
+    --retention 0 \
+    --force
+
+# 方法 2: 导出/导入 (推荐用于大容量)
+# 1.x 导出
+curl -G http://localhost:8086/query \
+    --data-urlencode &quot;db=mydb&quot; \
+    --data-urlencode &quot;q=SELECT * FROM cpu&quot; \
+    -H &quot;Accept: application/csv&quot; &gt; data.csv
+
+# 转换为 Line Protocol
+# 使用工具/脚本转换
+
+# 2.x 导入
+influx write \
+    --bucket my-bucket \
+    --file data.lp \
+    --rate-limit 50000
+</code></pre>
+<h3>迁移检查清单</h3>
+<pre><code class="language-markdown">## 1.x → 2.x 迁移检查清单
+
+### 迁移前
+- [ ] 备份 1.x 数据
+- [ ] 记录所有 CQ 配置
+- [ ] 记录所有 RP 配置
+- [ ] 导出用户权限
+- [ ] 测试升级脚本
+
+### 迁移中
+- [ ] 停止写入
+- [ ] 执行升级/导出
+- [ ] 验证数据完整性
+- [ ] 重建 CQ → Tasks
+- [ ] 配置权限
+
+### 迁移后
+- [ ] 验证查询结果
+- [ ] 测试写入性能
+- [ ] 更新应用配置
+- [ ] 监控日志错误
+- [ ] 清理旧实例
+</code></pre>
+<h2>备份验证</h2>
+<h3>自动化验证</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;
+备份验证工具
+&quot;&quot;&quot;
+import subprocess
+import tempfile
+import shutil
+from influxdb_client import InfluxDBClient
+
+class BackupVerifier:
+    def __init__(self, backup_path: str):
+        self.backup_path = backup_path
+        self.temp_dir = None
+        
+    def __enter__(self):
+        self.temp_dir = tempfile.mkdtemp(prefix=&quot;influx-verify-&quot;)
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.temp_dir and os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+    
+    def verify_backup(self) -&gt; dict:
+        &quot;&quot;&quot;验证备份完整性&quot;&quot;&quot;
+        results = {
+            &quot;backup_path&quot;: self.backup_path,
+            &quot;status&quot;: &quot;unknown&quot;,
+            &quot;checks&quot;: {}
+        }
+        
+        # 1. 检查备份文件存在
+        if not os.path.exists(self.backup_path):
+            results[&quot;status&quot;] = &quot;failed&quot;
+            results[&quot;error&quot;] = &quot;Backup file not found&quot;
+            return results
+        
+        results[&quot;checks&quot;][&quot;exists&quot;] = True
+        
+        # 2. 解压到临时目录
+        try:
+            if self.backup_path.endswith(&#39;.tar.gz&#39;):
+                subprocess.run(
+                    [&quot;tar&quot;, &quot;-xzf&quot;, self.backup_path, &quot;-C&quot;, self.temp_dir],
+                    check=True
+                )
+                restore_dir = os.path.join(
+                    self.temp_dir, 
+                    os.path.basename(self.backup_path).replace(&#39;.tar.gz&#39;, &#39;&#39;)
+                )
+            else:
+                restore_dir = self.backup_path
+            
+            results[&quot;checks&quot;][&quot;extractable&quot;] = True
+        except subprocess.CalledProcessError as e:
+            results[&quot;status&quot;] = &quot;failed&quot;
+            results[&quot;error&quot;] = f&quot;Failed to extract: {e}&quot;
+            return results
+        
+        # 3. 验证备份文件结构
+        required_files = [&quot;manifest.json&quot;]
+        for root, dirs, files in os.walk(restore_dir):
+            for req in required_files:
+                if req in files:
+                    results[&quot;checks&quot;][&quot;manifest_present&quot;] = True
+                    break
+        
+        # 4. 尝试恢复到临时实例（可选）
+        # 启动临时 InfluxDB 实例并恢复
+        # ...
+        
+        results[&quot;status&quot;] = &quot;verified&quot;
+        return results
+
+# 使用示例
+with BackupVerifier(&quot;/backup/influxdb/backup_20240124.tar.gz&quot;) as verifier:
+    result = verifier.verify_backup()
+    print(json.dumps(result, indent=2))
+</code></pre>
+<hr>
+<p>掌握备份恢复后，下一篇将介绍监控与集成实战。</p>
