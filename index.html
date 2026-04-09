@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>技术文档中心</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .header p { opacity: 0.9; }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            background: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label { color: #666; margin-top: 5px; }
+        .section {
+            background: white;
+            margin: 20px 0;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        .article-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        .article-item {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s;
+        }
+        .article-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+        .article-item a {
+            color: #333;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .article-item a:hover { color: #667eea; }
+        .article-meta {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 5px;
+        }
+        .footer {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8em; }
+            .stats { gap: 15px; }
+            .stat-item { padding: 15px 25px; }
+            .article-list { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📚 技术文档中心</h1>
+        <p>JavaScript & Vue 完整技术文档系列</p>
+    </div>
+
+    <div class="container">
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number">62</div>
+                <div class="stat-label">总文章数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">30</div>
+                <div class="stat-label">JavaScript</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">32</div>
+                <div class="stat-label">Vue 3</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🟨 JavaScript 系列 (30篇)</h2>
+            <div class="article-list" id="js-list"></div>
+        </div>
+
+        <div class="section">
+            <h2>🟩 Vue 3 系列 (32篇)</h2>
+            <div class="article-list" id="vue-list"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>所有文档已写入 articles/ 目录</p>
+        <p>生成时间: 2026-04-09</p>
+    </div>
+
+    <script>
+        const jsArticles = [
+            { title: "JS 数据类型全解", file: "javascript/js-data-types.md" },
+            { title: "作用域与闭包", file: "javascript/js-scope-closure.md" },
+            { title: "this 指向详解", file: "javascript/js-this-binding.md" },
+            { title: "原型与继承", file: "javascript/js-prototype-inheritance.md" },
+            { title: "事件循环机制", file: "javascript/js-event-loop.md" },
+            { title: "解构与展开运算符", file: "javascript/js-destructuring-spread.md" },
+            { title: "Promise 与异步编程", file: "javascript/js-promise-async.md" },
+            { title: "模块化发展史", file: "javascript/js-modules.md" },
+            { title: "Symbol 与 BigInt", file: "javascript/js-symbol-bigint.md" },
+            { title: "Proxy 与 Reflect", file: "javascript/js-proxy-reflect.md" },
+            { title: "V8 引擎浅析", file: "javascript/js-v8-engine.md" },
+            { title: "内存管理与性能", file: "javascript/js-memory-performance.md" },
+            { title: "函数式编程入门", file: "javascript/js-functional-programming.md" },
+            { title: "设计模式（JS 版）", file: "javascript/js-design-patterns.md" },
+            { title: "手写源码系列", file: "javascript/js-handwritten-code.md" },
+            { title: "DOM 操作最佳实践", file: "javascript/js-dom-operations.md" },
+            { title: "事件机制深度解析", file: "javascript/js-event-system.md" },
+            { title: "浏览器存储方案", file: "javascript/js-storage.md" },
+            { title: "网络请求全攻略", file: "javascript/js-network-requests.md" },
+            { title: "性能优化实战", file: "javascript/js-performance-optimization.md" },
+            { title: "TypeScript 速通", file: "javascript/js-typescript.md" },
+            { title: "Babel 与转译原理", file: "javascript/js-babel-transpilation.md" },
+            { title: "Webpack/Vite 配置", file: "javascript/js-bundler-config.md" },
+            { title: "单元测试实战", file: "javascript/js-unit-testing.md" },
+            { title: "代码规范与质量", file: "javascript/js-code-quality.md" },
+            { title: "响应式原理", file: "javascript/js-reactive-principles.md" },
+            { title: "虚拟 DOM 与 Diff", file: "javascript/js-virtual-dom.md" },
+            { title: "前端路由实现", file: "javascript/js-frontend-router.md" },
+            { title: "状态管理设计", file: "javascript/js-state-management.md" },
+            { title: "组件通信模式", file: "javascript/js-component-communication.md" }
+        ];
+
+        const vueArticles = [
+            { title: "Vue 3 快速上手", file: "vue/vue-3-getting-started.md" },
+            { title: "Composition API 详解", file: "vue/vue-composition-api.md" },
+            { title: "响应式系统精讲", file: "vue/vue-reactivity-system.md" },
+            { title: "计算属性与侦听器", file: "vue/vue-computed-watchers.md" },
+            { title: "生命周期钩子", file: "vue/vue-lifecycle-hooks.md" },
+            { title: "Props 与 Emits", file: "vue/vue-props-emits.md" },
+            { title: "插槽 Slots 完全指南", file: "vue/vue-slots.md" },
+            { title: "Provide / Inject", file: "vue/vue-provide-inject.md" },
+            { title: "组件实例与模板引用", file: "vue/vue-component-refs.md" },
+            { title: "动态组件与异步组件", file: "vue/vue-dynamic-async-components.md" },
+            { title: "Composables 设计模式", file: "vue/vue-composables-pattern.md" },
+            { title: "常用 Composables 实现", file: "vue/vue-common-composables.md" },
+            { title: "VueUse 库深度使用", file: "vue/vue-vueuse.md" },
+            { title: "Pinia 完全指南", file: "vue/vue-pinia-guide.md" },
+            { title: "Pinia 进阶技巧", file: "vue/vue-pinia-advanced.md" },
+            { title: "从 Vuex 迁移到 Pinia", file: "vue/vue-vuex-to-pinia.md" },
+            { title: "Vue Router 4 基础", file: "vue/vue-router-basics.md" },
+            { title: "导航守卫与路由元信息", file: "vue/vue-navigation-guards.md" },
+            { title: "组合式 API 中的路由", file: "vue/vue-router-composition-api.md" },
+            { title: "Vue 3 渲染机制", file: "vue/vue-rendering-mechanism.md" },
+            { title: "编译优化与静态提升", file: "vue/vue-compile-optimizations.md" },
+            { title: "自定义指令", file: "vue/vue-custom-directives.md" },
+            { title: "渲染函数与 JSX", file: "vue/vue-render-jsx.md" },
+            { title: "Vue 3 响应式原理源码", file: "vue/vue-reactivity-source.md" },
+            { title: "Vue 3 性能优化实战", file: "vue/vue-performance-optimization.md" },
+            { title: "懒加载与代码分割", file: "vue/vue-lazy-loading.md" },
+            { title: "大规模列表优化", file: "vue/vue-large-list-optimization.md" },
+            { title: "Vite + Vue 3 最佳实践", file: "vue/vue-vite-best-practices.md" },
+            { title: "Nuxt 3 入门到实战", file: "vue/vue-nuxt3-guide.md" },
+            { title: "Vue 3 与 TypeScript", file: "vue/vue-typescript.md" },
+            { title: "Vue 2 迁移 Vue 3 指南", file: "vue/vue-migration-guide.md" },
+            { title: "Vue vs React 对比", file: "vue/vue-vs-react.md" }
+        ];
+
+        function renderList(list, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = list.map((item, index) => `
+                <div class="article-item">
+                    <a href="${item.file}" target="_blank">${index + 1}. ${item.title}</a>
+                    <div class="article-meta">${item.file}</div>
+                </div>
+            `).join('');
+        }
+
+        renderList(jsArticles, 'js-list');
+        renderList(vueArticles, 'vue-list');
+    </script>
+</body>
+</html>
