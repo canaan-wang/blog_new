@@ -1,0 +1,856 @@
+<h1>Harbor 企业级镜像仓库完全指南</h1>
+
+<p>Harbor 是由 VMware 开源的企业级容器镜像仓库，提供安全、可信的镜像存储与管理能力。作为 CNCF 毕业项目，Harbor 在镜像安全扫描、访问控制、复制分发等方面提供了生产级的解决方案，是企业私有容器平台的理想选择。</p>
+
+<h2>一、Harbor 简介</h2>
+
+<p>Harbor 于 2014 年由 VMware 中国团队发起，2018 年捐赠给 CNCF，2020 年成为 CNCF 毕业项目。它解决了 Docker Hub 等公有仓库在企业环境中的诸多限制：</p>
+
+<ul>
+  <li><strong>安全性</strong>：支持镜像漏洞扫描、签名验证、内容信任</li>
+  <li><strong>可控性</strong>：私有化部署，数据完全自主掌控</li>
+  <li><strong>合规性</strong>：RBAC 权限管理、操作审计日志</li>
+  <li><strong>可靠性</strong>：多副本复制、高可用架构</li>
+</ul>
+
+<h2>二、核心架构</h2>
+
+<p>Harbor 采用微服务架构，核心组件包括：</p>
+
+<pre><code class="language-mermaid">graph TB
+    subgraph "Harbor Core Services"
+        Portal[Portal<br/>Web UI]
+        Core[Core<br/>API Service]
+        Registry[Distribution<br/>Docker Registry]
+        Jobservice[Job Service<br/>异步任务]
+    end
+
+    subgraph "Security & Scanning"
+        Trivy[Trivy<br/>漏洞扫描]
+        Notary[Notary<br/>镜像签名]
+    end
+
+    subgraph "Data Storage"
+        PostgreSQL[(PostgreSQL<br/>元数据)]
+        Redis[(Redis<br/>缓存)]
+        Storage[(Object Storage<br/>镜像层)]
+    end
+
+    Client[Docker Client] --&gt;|Push/Pull| Registry
+    Portal --&gt; Core
+    Core --&gt; Registry
+    Core --&gt; PostgreSQL
+    Core --&gt; Redis
+    Jobservice --&gt; Trivy
+    Registry --&gt; Storage</code></pre>
+
+<h3>核心组件说明</h3>
+
+<table>
+  <tr>
+    <th>组件</th>
+    <th>功能</th>
+    <th>技术栈</th>
+  </tr>
+  <tr>
+    <td>Core</td>
+    <td>核心业务逻辑、API、权限管理</td>
+    <td>Go</td>
+  </tr>
+  <tr>
+    <td>Portal</td>
+    <td>Web 管理界面</td>
+    <td>Angular</td>
+  </tr>
+  <tr>
+    <td>Registry</td>
+    <td>镜像存储与分发（基于 Distribution）</td>
+    <td>Go</td>
+  </tr>
+  <tr>
+    <td>Job Service</td>
+    <td>异步任务处理（复制、扫描、清理）</td>
+    <td>Go</td>
+  </tr>
+  <tr>
+    <td>Trivy</td>
+    <td>镜像漏洞扫描</td>
+    <td>Go</td>
+  </tr>
+  <tr>
+    <td>Notary</td>
+    <td>镜像签名与验证</td>
+    <td>Go</td>
+  </tr>
+</table>
+
+<h2>三、安装部署</h2>
+
+<h3>1. 环境准备</h3>
+
+<pre><code class="language-bash"># 系统要求
+# - Docker 20.10.0+
+# - Docker Compose 2.0+
+# - 4核 CPU / 8GB 内存 / 100GB 磁盘（最低配置）
+
+# 安装 Docker
+curl -fsSL https://get.docker.com | sh
+
+# 安装 Docker Compose
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+mkdir -p $DOCKER_CONFIG/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-linux-x86_64 \
+  -o $DOCKER_CONFIG/cli-plugins/docker-compose
+chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose</code></pre>
+
+<h3>2. 下载并配置 Harbor</h3>
+
+<pre><code class="language-bash"># 下载 Harbor 安装包
+cd /opt
+wget https://github.com/goharbor/harbor/releases/download/v2.11.0/harbor-offline-installer-v2.11.0.tgz
+tar xvf harbor-offline-installer-v2.11.0.tgz
+cd harbor
+
+# 复制配置文件模板
+cp harbor.yml.tmpl harbor.yml
+
+# 编辑配置
+vim harbor.yml</code></pre>
+
+<h3>3. 配置文件详解</h3>
+
+<pre><code class="language-yaml"># Harbor 主机名，客户端访问使用
+hostname: harbor.example.com
+
+# HTTP/HTTPS 配置
+http:
+  port: 80
+
+# 生产环境必须启用 HTTPS
+https:
+  port: 443
+  certificate: /opt/harbor/ssl/harbor.crt
+  private_key: /opt/harbor/ssl/harbor.key
+
+# Harbor 管理员密码
+harbor_admin_password: Harbor12345
+
+# 数据库配置
+database:
+  password: root123
+  max_idle_conns: 100
+  max_open_conns: 900
+
+# 数据卷配置
+data_volume: /data
+
+# Trivy 漏洞扫描器配置
+trivy:
+  ignore_unfixed: false
+  skip_update: false
+  offline_scan: false
+
+# 日志配置
+log:
+  level: info
+  local:
+    rotate_count: 50
+    rotate_size: 200M
+    location: /var/log/harbor
+
+# 外部代理配置（可选）
+proxy:
+  http_proxy:
+  https_proxy:
+  no_proxy:
+  components:
+    - core
+    - jobservice
+    - trivy</code></pre>
+
+<h3>4. 执行安装</h3>
+
+<pre><code class="language-bash"># 安装并启动 Harbor
+sudo ./install.sh
+
+# 如需启用 Trivy 扫描器
+sudo ./install.sh --with-trivy
+
+# 如需启用 Notary（镜像签名）
+sudo ./install.sh --with-notary
+
+# 查看运行状态
+docker compose ps
+
+# 停止 Harbor
+docker compose down
+
+# 启动 Harbor
+docker compose up -d</code></pre>
+
+<h3>5. 自签名证书配置（测试环境）</h3>
+
+<pre><code class="language-bash"># 生成 CA 私钥
+openssl genrsa -out ca.key 4096
+
+# 生成 CA 证书
+openssl req -x509 -new -nodes -sha512 -days 3650 \
+  -subj "/C=CN/ST=Beijing/L=Beijing/O=example/OU=Personal/CN=example.com" \
+  -key ca.key \
+  -out ca.crt
+
+# 生成服务器私钥
+openssl genrsa -out harbor.key 4096
+
+# 生成证书签名请求
+openssl req -sha512 -new \
+  -subj "/C=CN/ST=Beijing/L=Beijing/O=example/OU=Personal/CN=harbor.example.com" \
+  -key harbor.key \
+  -out harbor.csr
+
+# 生成 x509 v3 扩展文件
+cat > v3.ext &lt;&lt;-EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1=harbor.example.com
+DNS.2=harbor
+IP.1=192.168.1.100
+EOF
+
+# 使用 CA 签发证书
+openssl x509 -req -sha512 -days 3650 \
+  -extfile v3.ext \
+  -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -in harbor.csr \
+  -out harbor.crt
+
+# 客户端信任 CA 证书
+sudo cp ca.crt /etc/docker/certs.d/harbor.example.com/ca.crt
+sudo systemctl restart docker</code></pre>
+
+<h2>四、快速入门</h2>
+
+<h3>1. 登录 Harbor</h3>
+
+<pre><code class="language-bash"># 命令行登录
+docker login harbor.example.com
+
+# 输入用户名和密码
+Username: admin
+Password: Harbor12345
+
+# 登录成功提示
+Login Succeeded</code></pre>
+
+<h3>2. 推送镜像</h3>
+
+<pre><code class="language-bash"># 标记本地镜像
+docker tag myapp:1.0 harbor.example.com/library/myapp:1.0
+
+# 推送到 Harbor
+docker push harbor.example.com/library/myapp:1.0
+
+# 输出
+The push refers to repository [harbor.example.com/library/myapp]
+5f70bf18a086: Pushed
+1: digest: sha256:xxxx... size: 528</code></pre>
+
+<h3>3. 拉取镜像</h3>
+
+<pre><code class="language-bash"># 从 Harbor 拉取镜像
+docker pull harbor.example.com/library/myapp:1.0
+
+# 使用镜像运行容器
+docker run -d -p 8080:8080 harbor.example.com/library/myapp:1.0</code></pre>
+
+<h3>4. 项目管理</h3>
+
+<pre><code class="language-bash"># Harbor CLI 工具安装
+curl -L https://github.com/goharbor/harbor-cli/releases/download/v0.1.0/harbor-cli-linux-amd64 -o harbor
+chmod +x harbor
+sudo mv harbor /usr/local/bin/
+
+# 配置 CLI
+harbor login https://harbor.example.com -u admin -p Harbor12345
+
+# 创建项目
+harbor project create --name production --public false
+
+# 列出项目
+harbor project list
+
+# 删除项目
+harbor project delete production</code></pre>
+
+<h2>五、核心功能详解</h2>
+
+<h3>1. 项目管理</h3>
+
+<p>Project 是 Harbor 中组织镜像的基本单位，相当于命名空间：</p>
+
+<pre><code class="language-mermaid">graph LR
+    subgraph "Harbor"
+        P1[library<br/>公开项目]
+        P2[production<br/>私有项目]
+        P3[dev-team-a<br/>私有项目]
+    end
+
+    U1[开发者A] --&gt; P2
+    U1 --&gt; P3
+    U2[开发者B] --&gt; P2
+    P1 --&gt;|只读| U3[访客]</code></pre>
+
+<p><strong>项目类型：</strong></p>
+<ul>
+  <li><strong>公开项目（Public）</strong>：无需认证即可拉取镜像，适合开源项目</li>
+  <li><strong>私有项目（Private）</strong>：需要认证和授权才能访问，适合企业内部使用</li>
+</ul>
+
+<p><strong>配额管理：</strong></p>
+<pre><code class="language-bash"># 设置项目存储配额（通过 API）
+curl -X PUT \
+  -H "Content-Type: application/json" \
+  -u admin:Harbor12345 \
+  -d '{"storage_limit": 10737418240}' \
+  https://harbor.example.com/api/v2.0/projects/2</code></pre>
+
+<h3>2. 基于角色的访问控制（RBAC）</h3>
+
+<table>
+  <tr>
+    <th>角色</th>
+    <th>权限</th>
+    <th>适用场景</th>
+  </tr>
+  <tr>
+    <td>Project Admin</td>
+    <td>完整权限（管理成员、配置、删除项目）</td>
+    <td>项目负责人</td>
+  </tr>
+  <tr>
+    <td>Maintainer</td>
+    <td>推送/拉取镜像、管理标签、查看日志</td>
+    <td>CI/CD 服务账号</td>
+  </tr>
+  <tr>
+    <td>Developer</td>
+    <td>推送/拉取镜像</td>
+    <td>开发人员</td>
+  </tr>
+  <tr>
+    <td>Guest</td>
+    <td>仅拉取镜像</td>
+    <td>运维人员、外部团队</td>
+  </tr>
+</table>
+
+<h3>3. 镜像漏洞扫描</h3>
+
+<p>Harbor 集成 Trivy 实现自动化的镜像安全扫描：</p>
+
+<pre><code class="language-mermaid">sequenceDiagram
+    participant User
+    participant Harbor
+    participant Trivy
+    participant DB
+
+    User-&gt;&gt;Harbor: 推送镜像
+    Harbor-&gt;&gt;Harbor: 触发扫描任务
+    Harbor-&gt;&gt;Trivy: 调用扫描 API
+    Trivy-&gt;&gt;DB: 查询漏洞数据库
+    Trivy-&gt;&gt;Harbor: 返回扫描结果
+    Harbor-&gt;&gt;Harbor: 存储报告
+    User-&gt;&gt;Harbor: 查看扫描报告</code></pre>
+
+<p><strong>扫描策略配置：</strong></p>
+<ul>
+  <li><strong>自动扫描</strong>：镜像推送时自动触发扫描</li>
+  <li><strong>定时扫描</strong>：按设定时间周期重新扫描所有镜像</li>
+  <li><strong>阻断策略</strong>：根据漏洞等级阻止镜像拉取</li>
+</ul>
+
+<p><strong>漏洞等级：</strong></p>
+<ul>
+  <li>🔴 Critical（严重）</li>
+  <li>🟠 High（高危）</li>
+  <li>🟡 Medium（中危）</li>
+  <li>🟢 Low（低危）</li>
+</ul>
+
+<h3>4. 镜像复制</h3>
+
+<p>Harbor 支持跨多个 Harbor 实例或云仓库的镜像复制：</p>
+
+<pre><code class="language-mermaid">graph LR
+    subgraph "数据中心 A"
+        H1[Harbor 主仓库]
+    end
+
+    subgraph "数据中心 B"
+        H2[Harbor 从仓库]
+    end
+
+    subgraph "公有云"
+        AC[ACR 仓库]
+        EC[ECR 仓库]
+    end
+
+    H1 --&gt;|推送复制| H2
+    H1 --&gt;|推送复制| AC
+    H1 --&gt;|推送复制| EC</code></pre>
+
+<p><strong>复制模式：</strong></p>
+<ul>
+  <li><strong>Push-based</strong>：源仓库主动推送到目标仓库（推荐）</li>
+  <li><strong>Pull-based</strong>：目标仓库从源仓库拉取</li>
+</ul>
+
+<p><strong>复制过滤器：</strong></p>
+<ul>
+  <li>按仓库名称（支持通配符）</li>
+  <li>按标签（支持通配符）</li>
+  <li>按资源类型（镜像或 Helm Chart）</li>
+</ul>
+
+<h3>5. Helm Chart 管理</h3>
+
+<p>Harbor 不仅是镜像仓库，还支持 Helm Chart 的存储和分发：</p>
+
+<pre><code class="language-bash"># 添加 Harbor 作为 Helm Repo
+helm repo add myharbor https://harbor.example.com/chartrepo/library \
+  --username admin --password Harbor12345
+
+# 更新仓库索引
+helm repo update
+
+# 搜索 Chart
+helm search repo myharbor/
+
+# 安装 Chart
+helm install myapp myharbor/myapp
+
+# 推送 Chart 到 Harbor
+helm package ./mychart
+helm push myapp-1.0.0.tgz oci://harbor.example.com/library</code></pre>
+
+<h3>6. 镜像保留策略</h3>
+
+<p>自动清理旧镜像，释放存储空间：</p>
+
+<pre><code class="language-bash"># 保留策略示例
+规则1：保留最近推送的 10 个标签
+规则2：保留最近 30 天内推送的标签
+规则3：保留带有 "production" "release" 标签的镜像
+规则4：删除其他所有标签</code></pre>
+
+<h3>7. 垃圾回收</h3>
+
+<p>清理已删除镜像的未引用 Blob：</p>
+
+<pre><code class="language-bash"># 在 Harbor 服务器上执行
+cd /opt/harbor
+docker compose stop
+
+# 运行垃圾回收
+./prepare
+docker run -it --name gc --rm --volumes-from registry \
+  goharbor/registry-photon:v2.11.0 \
+  garbage-collect /etc/registry/config.yml
+
+# 删除未标记的 Manifest（可选，需谨慎）
+docker run -it --name gc --rm --volumes-from registry \
+  goharbor/registry-photon:v2.11.0 \
+  garbage-collect --delete-untagged /etc/registry/config.yml
+
+docker compose start</code></pre>
+
+<h2>六、CI/CD 集成</h2>
+
+<h3>1. Jenkins 集成</h3>
+
+<pre><code class="language-groovy">pipeline {
+    agent any
+    environment {
+        HARBOR_URL = 'harbor.example.com'
+        HARBOR_PROJECT = 'production'
+        IMAGE_NAME = 'myapp'
+    }
+    stages {
+        stage('Build') {
+            steps {
+                script {
+                    docker.build("${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:${BUILD_NUMBER}")
+                }
+            }
+        }
+        stage('Scan') {
+            steps {
+                script {
+                    // 等待 Harbor 自动扫描完成
+                    sleep(time: 30, unit: 'SECONDS')
+
+                    // 检查扫描结果
+                    def scanResult = sh(
+                        script: """
+                        curl -s -u admin:Harbor12345 \
+                        "https://${HARBOR_URL}/api/v2.0/projects/${HARBOR_PROJECT}/repositories/${IMAGE_NAME}/artifacts/${BUILD_NUMBER}/additions/vulnerabilities"
+                        """,
+                        returnStdout: true
+                    )
+
+                    // 解析漏洞数量
+                    def critical = sh(
+                        script: "echo '${scanResult}' | grep -o 'Critical' | wc -l",
+                        returnStdout: true
+                    ).trim()
+
+                    if (critical.toInteger() &gt; 0) {
+                        error "发现严重漏洞，阻断构建"
+                    }
+                }
+            }
+        }
+        stage('Push') {
+            steps {
+                script {
+                    docker.withRegistry("https://${HARBOR_URL}", 'harbor-credentials') {
+                        docker.image("${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:${BUILD_NUMBER}").push()
+                        docker.image("${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:${BUILD_NUMBER}").push('latest')
+                    }
+                }
+            }
+        }
+    }
+}</code></pre>
+
+<h3>2. GitLab CI 集成</h3>
+
+<pre><code class="language-yaml">stages:
+  - build
+  - scan
+  - push
+
+variables:
+  HARBOR_URL: harbor.example.com
+  HARBOR_PROJECT: production
+  IMAGE_NAME: $HARBOR_URL/$HARBOR_PROJECT/myapp
+
+build:
+  stage: build
+  script:
+    - docker build -t $IMAGE_NAME:$CI_COMMIT_SHA .
+
+scan:
+  stage: scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy image --exit-code 1 --severity HIGH,CRITICAL $IMAGE_NAME:$CI_COMMIT_SHA
+
+push:
+  stage: push
+  script:
+    - echo $HARBOR_PASSWORD | docker login $HARBOR_URL -u $HARBOR_USERNAME --password-stdin
+    - docker push $IMAGE_NAME:$CI_COMMIT_SHA
+    - docker tag $IMAGE_NAME:$CI_COMMIT_SHA $IMAGE_NAME:latest
+    - docker push $IMAGE_NAME:latest</code></pre>
+
+<h3>3. Kubernetes 镜像拉取密钥</h3>
+
+<pre><code class="language-bash"># 创建拉取密钥
+kubectl create secret docker-registry harbor-secret \
+  --docker-server=harbor.example.com \
+  --docker-username=robot\$production \
+  --docker-password=robot-token \
+  --docker-email=robot@example.com \
+  -n production
+
+# 在 Deployment 中使用
+kubectl patch serviceaccount default -n production -p '{"imagePullSecrets": [{"name": "harbor-secret"}]}'</code></pre>
+
+<h2>七、高可用部署</h2>
+
+<h3>1. 架构设计</h3>
+
+<pre><code class="language-mermaid">graph TB
+    subgraph "负载均衡层"
+        LB[Nginx/HAProxy<br/>负载均衡]
+    end
+
+    subgraph "Harbor 服务层"
+        H1[Harbor 实例 1]
+        H2[Harbor 实例 2]
+        H3[Harbor 实例 3]
+    end
+
+    subgraph "共享存储层"
+        DB[(PostgreSQL<br/>主从集群)]
+        R[(Redis<br/>Sentinel)]
+        S[(NFS/S3<br/>镜像存储)]
+    end
+
+    LB --&gt; H1
+    LB --&gt; H2
+    LB --&gt; H3
+    H1 --&gt; DB
+    H1 --&gt; R
+    H1 --&gt; S
+    H2 --&gt; DB
+    H2 --&gt; R
+    H2 --&gt; S</code></pre>
+
+<h3>2. 外部数据库配置</h3>
+
+<pre><code class="language-yaml"># harbor.yml 外部数据库配置
+database:
+  type: external
+  external:
+    host: postgres.example.com
+    port: 5432
+    username: harbor
+    password: harbor_db_password
+    core_database: registry
+    notary_server_database: notary_server
+    notary_signer_database: notary_signer
+    ssl_mode: disable
+    max_idle_conns: 100
+    max_open_conns: 900
+
+# Redis 配置
+redis:
+  type: external
+  external:
+    addr: redis.example.com:6379
+    sentinel_master_set: mymaster
+    core_url_index: 0
+    jobservice_url_index: 1
+    registry_url_index: 2
+    chartmuseum_url_index: 3
+    trivy_url_index: 4
+    idle_timeout_seconds: 30</code></pre>
+
+<h3>3. 共享存储配置</h3>
+
+<pre><code class="language-yaml"># 使用 S3/MinIO 作为存储后端
+storage_service:
+  s3:
+    accesskey: AKIAIOSFODNN7EXAMPLE
+    secretkey: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+    region: us-west-1
+    bucket: harbor-images
+    secure: true
+    v4auth: true
+    chunksize: 5242880
+    rootdirectory: /</code></pre>
+
+<h2>八、监控与日志</h2>
+
+<h3>1. 健康检查</h3>
+
+<pre><code class="language-bash"># Harbor API 健康检查
+curl -k https://harbor.example.com/api/v2.0/health
+
+# 响应示例
+{
+  "status": "healthy",
+  "components": [
+    {"name": "core", "status": "healthy"},
+    {"name": "jobservice", "status": "healthy"},
+    {"name": "registry", "status": "healthy"},
+    {"name": "database", "status": "healthy"},
+    {"name": "redis", "status": "healthy"}
+  ]
+}</code></pre>
+
+<h3>2. Prometheus 监控</h3>
+
+<pre><code class="language-yaml"># docker-compose.yml 添加监控
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+# prometheus.yml
+scrape_configs:
+  - job_name: 'harbor'
+    static_configs:
+      - targets: ['core:8080']
+    metrics_path: '/metrics'</code></pre>
+
+<p><strong>关键指标：</strong></p>
+<ul>
+  <li><code>harbor_project_count</code>：项目数量</li>
+  <li><code>harbor_repository_count</code>：仓库数量</li>
+  <li><code>harbor_artifact_pulled</code>：镜像拉取次数</li>
+  <li><code>harbor_artifact_pushed</code>：镜像推送次数</li>
+  <li><code>harbor_task_completed</code>：任务完成情况</li>
+</ul>
+
+<h3>3. 审计日志</h3>
+
+<p>Harbor 记录所有操作的审计日志：</p>
+
+<pre><code class="language-bash"># 查看审计日志（管理员）
+curl -u admin:Harbor12345 \
+  'https://harbor.example.com/api/v2.0/audit-logs?page=1&amp;page_size=10'
+
+# 日志内容包括：
+# - 镜像推送/拉取
+# - 用户登录/登出
+# - 项目创建/删除
+# - 权限变更</code></pre>
+
+<h2>九、备份与恢复</h2>
+
+<h3>1. 数据库备份</h3>
+
+<pre><code class="language-bash">#!/bin/bash
+# backup.sh
+
+BACKUP_DIR="/backup/harbor/$(date +%Y%m%d)"
+mkdir -p $BACKUP_DIR
+
+# 备份 PostgreSQL
+docker exec harbor-db pg_dump -U postgres registry &gt; $BACKUP_DIR/registry.sql
+docker exec harbor-db pg_dump -U postgres notary_server &gt; $BACKUP_DIR/notary_server.sql
+docker exec harbor-db pg_dump -U postgres notary_signer &gt; $BACKUP_DIR/notary_signer.sql
+
+# 备份配置
+cp /opt/harbor/harbor.yml $BACKUP_DIR/
+
+# 备份镜像数据（如使用本地存储）
+tar czf $BACKUP_DIR/registry.tar.gz /data/registry/
+
+# 保留最近 30 天备份
+find /backup/harbor -type d -mtime +30 -exec rm -rf {} \;</code></pre>
+
+<h3>2. 灾难恢复</h3>
+
+<pre><code class="language-bash">#!/bin/bash
+# restore.sh
+
+BACKUP_DIR="/backup/harbor/20240101"
+
+# 停止 Harbor
+cd /opt/harbor &amp;&amp; docker compose down
+
+# 恢复数据库
+docker run --rm -v $BACKUP_DIR:/backup \
+  -e PGUSER=postgres \
+  -e PGPASSWORD=root123 \
+  --network harbor_harbor \
+  goharbor/harbor-db:v2.11.0 \
+  sh -c 'psql &lt; /backup/registry.sql'
+
+# 恢复镜像数据
+tar xzf $BACKUP_DIR/registry.tar.gz -C /
+
+# 重启 Harbor
+docker compose up -d</code></pre>
+
+<h2>十、最佳实践</h2>
+
+<h3>1. 安全实践</h3>
+
+<ul>
+  <li><strong>启用 HTTPS</strong>：生产环境必须配置 TLS 证书</li>
+  <li><strong>强密码策略</strong>：管理员密码至少 12 位，包含大小写字母、数字和特殊字符</li>
+  <li><strong>机器人账户</strong>：CI/CD 使用机器人账户而非管理员账户</li>
+  <li><strong>定期扫描</strong>：启用自动扫描，设置漏洞阻断策略</li>
+  <li><strong>镜像签名</strong>：关键镜像启用 Notary 签名验证</li>
+  <li><strong>定期轮换</strong>：定期更换密码和机器人账户 Token</li>
+</ul>
+
+<h3>2. 存储管理</h3>
+
+<ul>
+  <li><strong>配额限制</strong>：为每个项目设置合理的存储配额</li>
+  <li><strong>保留策略</strong>：配置镜像保留规则，自动清理旧版本</li>
+  <li><strong>垃圾回收</strong>：定期执行垃圾回收释放空间</li>
+  <li><strong>存储选型</strong>：大规模部署使用 S3/MinIO 等对象存储</li>
+</ul>
+
+<h3>3. 高可用设计</h3>
+
+<ul>
+  <li><strong>数据库高可用</strong>：使用 PostgreSQL 主从 + 自动故障转移</li>
+  <li><strong>Redis 高可用</strong>：配置 Redis Sentinel 或 Cluster</li>
+  <li><strong>负载均衡</strong>：多 Harbor 实例前置负载均衡器</li>
+  <li><strong>跨机房复制</strong>：配置镜像复制实现异地容灾</li>
+</ul>
+
+<h3>4. 运维监控</h3>
+
+<ul>
+  <li><strong>健康检查</strong>：配置健康检查端点监控</li>
+  <li><strong>资源监控</strong>：监控 CPU、内存、磁盘、网络</li>
+  <li><strong>业务监控</strong>：监控镜像推送/拉取成功率</li>
+  <li><strong>日志收集</strong>：集中收集和分析 Harbor 日志</li>
+  <li><strong>告警配置</strong>：设置磁盘空间、扫描失败等告警</li>
+</ul>
+
+<h2>十一、常见问题</h2>
+
+<h3>1. 登录失败 502 Bad Gateway</h3>
+
+<p>可能原因及解决方案：</p>
+<ul>
+  <li>Harbor 服务未完全启动：<code>docker compose ps</code> 检查状态</li>
+  <li>数据库连接失败：检查 PostgreSQL 状态和配置</li>
+  <li>磁盘空间不足：清理磁盘或扩展存储</li>
+</ul>
+
+<h3>2. 推送镜像 413 Request Entity Too Large</h3>
+
+<p>调整 Nginx 上传限制：</p>
+
+<pre><code class="language-yaml"># common/config/nginx/nginx.conf
+client_max_body_size 0;  # 取消限制</code></pre>
+
+<h3>3. 镜像扫描失败</h3>
+
+<p>检查 Trivy 数据库更新：</p>
+
+<pre><code class="language-bash"># 手动更新漏洞数据库
+docker exec -it harbor-trivy trivy image --download-db-only
+
+# 检查 Trivy 日志
+docker logs harbor-trivy</code></pre>
+
+<h3>4. 忘记管理员密码</h3>
+
+<pre><code class="language-bash"># 重置 admin 密码
+cd /opt/harbor
+docker compose down
+
+# 进入数据库容器修改密码
+docker run -it --rm \
+  -v /data/database:/var/lib/postgresql/data \
+  goharbor/harbor-db:v2.11.0 \
+  sh -c "psql -U postgres -c \"UPDATE harbor_user SET password_hash=\\\$(echo -n 'NewPassword123' | openssl dgst -sha256 -binary | base64) WHERE username='admin';\""
+
+docker compose up -d</code></pre>
+
+<h2>总结</h2>
+
+<p>Harbor 作为企业级镜像仓库，在镜像安全、权限管理、高可用等方面提供了完整的解决方案。通过本文的介绍，你应该能够：</p>
+
+<ul>
+  <li>理解 Harbor 的架构和核心组件</li>
+  <li>完成 Harbor 的安装和配置</li>
+  <li>掌握镜像推送、拉取、扫描等日常操作</li>
+  <li>配置镜像复制、保留策略等高级功能</li>
+  <li>将 Harbor 集成到 CI/CD 流水线</li>
+  <li>规划和实施高可用部署方案</li>
+</ul>
+
+<p>随着云原生技术的发展，Harbor 正在从单纯的镜像仓库演进为全面的制品管理平台，支持 Helm Chart、CNAB、OPA Bundle 等多种云原生制品。建议持续关注 Harbor 社区动态，及时升级到最新版本获取新功能和安全补丁。</p>

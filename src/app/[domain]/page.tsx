@@ -40,29 +40,82 @@ export default async function DomainPage({
   const data = await getDomainWithCategories(domain);
   if (!data) notFound();
 
-  // 找到第一个分类
+  // 静态导出模式下不自动跳转，由客户端处理分类切换逻辑
+  // 检查所有分类是否都有文章
+  let hasAnyArticles = false;
   const categories = getCategories(domain);
-  if (categories.length > 0) {
-    const firstCategory = categories[0];
-    const articles = await getArticlesByCategory(domain, firstCategory.slug);
-    
-    // 按分组排序，overview 在最前面
-    const groups = getGroups(firstCategory.slug);
-    
-    // 找到 overview 分组的文章
-    const overviewGroup = groups.find(g => g.slug === "overview");
-    if (overviewGroup) {
-      const overviewArticles = articles.filter(a => a.group === "overview");
-      if (overviewArticles.length > 0) {
-        // 跳转到 overview 的第一篇文章
-        redirect(`/${domain}/${overviewArticles[0].slug}`);
+  for (const category of categories) {
+    const articles = await getArticlesByCategory(domain, category.slug);
+    if (articles.length > 0) {
+      hasAnyArticles = true;
+      break;
+    }
+  }
+
+  // 如果整个领域都没有文章，直接显示空页面
+  if (!hasAnyArticles) {
+    const components = getMDXComponents();
+    const categoryIntros: Array<{
+      slug: string;
+      title: string;
+      content: React.ReactNode;
+    }> = [];
+
+    for (const category of data.categories) {
+      const intro = await getCategoryIntro(domain, category.slug);
+      if (intro) {
+        categoryIntros.push({
+          slug: category.slug,
+          title: intro.title,
+          content: (
+            <MDXRemote
+              source={intro.content}
+              components={components}
+              options={{
+                mdxOptions: {
+                  remarkPlugins: [remarkGfm],
+                  rehypePlugins: [
+                    rehypeSlug,
+                    [
+                      rehypePrettyCode,
+                      {
+                        theme: "monokai",
+                        keepBackground: true,
+                      },
+                    ],
+                  ],
+                },
+              }}
+            />
+          ),
+        });
       }
     }
-    
-    // 如果没有 overview，跳转到该分类的第一篇文章
-    if (articles.length > 0) {
-      redirect(`/${domain}/${articles[0].slug}`);
+
+    if (categoryIntros.length === 0) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center">
+            <h1 className="mb-3 font-serif text-2xl font-bold text-foreground">
+              {data.title}
+            </h1>
+            <p className="text-sm text-muted">{data.description}</p>
+            <p className="mt-6 text-sm text-muted">
+              ← 请从左侧选择分类和文章开始阅读
+            </p>
+          </div>
+        </div>
+      );
     }
+
+    return (
+      <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-muted">加载中...</div></div>}>
+        <CategoryContent
+          categories={categoryIntros}
+          defaultSlug={categoryIntros[0]?.slug || ""}
+        />
+      </Suspense>
+    );
   }
 
   const components = getMDXComponents();

@@ -43,27 +43,23 @@ function SidebarInner({ data }: SidebarProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const categoryFromUrl = searchParams.get("category");
   const categoryFromArticle = data.categories.find((cat) =>
     cat.articles.some((a) => pathname === `/${data.domain.slug}/${a.slug}`)
   )?.slug;
 
   const derivedCategory =
-    categoryFromUrl || categoryFromArticle || data.categories[0]?.slug || "";
+    categoryFromArticle || data.categories[0]?.slug || "";
 
   const [userSelectedCategory, setUserSelectedCategory] = useState<
     string | null
   >(null);
 
   const activeCategory = useMemo(() => {
-    if (categoryFromUrl) {
-      return categoryFromUrl;
-    }
     if (categoryFromArticle) {
       return categoryFromArticle;
     }
     return userSelectedCategory || derivedCategory;
-  }, [categoryFromUrl, categoryFromArticle, derivedCategory, userSelectedCategory]);
+  }, [categoryFromArticle, derivedCategory, userSelectedCategory]);
 
   const activeCat = data.categories.find((c) => c.slug === activeCategory);
   const grouped = activeCat ? groupArticles(activeCat.articles, activeCategory) : [];
@@ -112,7 +108,7 @@ function SidebarInner({ data }: SidebarProps) {
                   // 找到该分类的第一篇文章（优先 overview 分组）
                   const groupConfigs = getGroups(cat.slug);
                   const overviewGroup = groupConfigs.find(g => g.slug === "overview");
-                  
+
                   let targetArticle = null;
                   if (overviewGroup) {
                     // 优先找 overview 分组的文章
@@ -122,18 +118,17 @@ function SidebarInner({ data }: SidebarProps) {
                   if (!targetArticle && cat.articles.length > 0) {
                     targetArticle = cat.articles[0];
                   }
-                  
+
                   if (targetArticle) {
                     // 跳转到文章页面
                     router.push(`/${data.domain.slug}/${targetArticle.slug}`);
                   } else {
-                    // 没有文章，只切换分类
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.set("category", cat.slug);
-                    const targetPath = isArticlePage
-                      ? `/${data.domain.slug}`
-                      : pathname;
-                    router.push(`${targetPath}?${params.toString()}`);
+                    // 没有文章，如果当前是文章页面，先跳转到领域首页
+                    if (isArticlePage) {
+                      router.push(`/${data.domain.slug}`);
+                    }
+                    // 切换到选中的分类
+                    setUserSelectedCategory(cat.slug);
                   }
                 }}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
@@ -153,10 +148,10 @@ function SidebarInner({ data }: SidebarProps) {
           {/* Intro entry */}
           {activeCat?.hasIntro && (
             <Link
-              href={`/${data.domain.slug}?category=${activeCategory}`}
+              href={`/${data.domain.slug}`}
               onClick={() => setMobileOpen(false)}
               className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                isIntroActive && categoryFromUrl === activeCategory
+                isIntroActive
                   ? "border-accent bg-accent/10 text-accent"
                   : "border-border bg-card-bg text-foreground hover:border-accent hover:text-accent"
               }`}

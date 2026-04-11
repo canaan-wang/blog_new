@@ -89,6 +89,13 @@ export const categoriesByDomain: Record<string, Category[]> = {
       order: 5,
       domainSlug: "ai",
     },
+    {
+      slug: "spec-coding",
+      title: "技术规范编码",
+      description: "AI 辅助编码规范、工程化最佳实践、代码质量提升指南",
+      order: 6,
+      domainSlug: "ai",
+    },
   ],
   "backend-languages": [
     {
@@ -126,6 +133,13 @@ export const categoriesByDomain: Record<string, Category[]> = {
       title: "Elasticsearch",
       description: "全文搜索引擎，数据建模与查询优化",
       order: 3,
+      domainSlug: "data-storage",
+    },
+    {
+      slug: "influxdb",
+      title: "InfluxDB",
+      description: "时序数据库，高性能数据写入与查询，适用于监控和 IoT 场景",
+      order: 4,
       domainSlug: "data-storage",
     },
   ],
@@ -247,6 +261,9 @@ export const groupsByCategory: Record<string, Group[]> = {
     { slug: "overview", title: "多模态概述", categorySlug: "multimodal-ai", order: 1 },
     { slug: "practice", title: "实践应用", categorySlug: "multimodal-ai", order: 2 },
   ],
+  "spec-coding": [
+    { slug: "overview", title: "技术规范概述", categorySlug: "spec-coding", order: 1 },
+  ],
   // Golang 领域
   "golang": [
     { slug: "overview", title: "Go语言概述", categorySlug: "golang", order: 1 },
@@ -290,6 +307,16 @@ export const groupsByCategory: Record<string, Group[]> = {
     { slug: "search", title: "搜索", categorySlug: "elasticsearch", order: 2 },
     { slug: "aggregation", title: "聚合", categorySlug: "elasticsearch", order: 3 },
   ],
+  // InfluxDB 领域
+  "influxdb": [
+    { slug: "overview", title: "InfluxDB概述", categorySlug: "influxdb", order: 1 },
+    { slug: "basics", title: "基础概念", categorySlug: "influxdb", order: 2 },
+    { slug: "line-protocol", title: "Line Protocol", categorySlug: "influxdb", order: 3 },
+    { slug: "influxql", title: "InfluxQL", categorySlug: "influxdb", order: 4 },
+    { slug: "flux", title: "Flux查询语言", categorySlug: "influxdb", order: 5 },
+    { slug: "cluster", title: "集群与高可用", categorySlug: "influxdb", order: 6 },
+    { slug: "application", title: "应用场景", categorySlug: "influxdb", order: 7 },
+  ],
   // 微服务架构
   "microservices": [
     { slug: "overview", title: "微服务概述", categorySlug: "microservices", order: 1 },
@@ -327,7 +354,9 @@ export const groupsByCategory: Record<string, Group[]> = {
   // 容器技术
   "container": [
     { slug: "docker", title: "Docker", categorySlug: "container", order: 1 },
-    { slug: "kubernetes", title: "Kubernetes", categorySlug: "container", order: 2 },
+    { slug: "docker-compose", title: "Docker Compose", categorySlug: "container", order: 2 },
+    { slug: "kubernetes", title: "Kubernetes", categorySlug: "container", order: 3 },
+    { slug: "harbor", title: "Harbor", categorySlug: "container", order: 4 },
   ],
   // 网络
   "network": [

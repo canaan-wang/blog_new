@@ -24,6 +24,7 @@ export interface ArticleMeta {
   domain: string;
   group: string;
   draft: boolean;
+  tags?: string[];
 }
 
 export interface Article extends ArticleMeta {

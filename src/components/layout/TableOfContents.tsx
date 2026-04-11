@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
@@ -29,22 +29,33 @@ export default function TableOfContents() {
   const [activeId, setActiveId] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const pathname = usePathname();
+  const hasExtractedRef = useRef(false);
+  const observerRef = useRef<MutationObserver | null>(null);
 
-  // Reset headings when pathname changes
+  // Reset state when pathname changes
   useEffect(() => {
     setHeadings([]);
     setActiveId("");
     setExpanded(new Set());
+    hasExtractedRef.current = false;
+    
+    // Clean up previous observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
   }, [pathname]);
 
   // Extract headings from DOM
   useEffect(() => {
     const extract = () => {
       const article = document.querySelector("article");
-      if (!article) return;
+      if (!article) return false;
       
       // Select all h2 and h3 elements, not just those with id
       const elements = article.querySelectorAll("h2, h3");
+      if (elements.length === 0) return false;
+      
       const data: Heading[] = [];
       const slugCounts = new Map<string, number>();
       
@@ -92,17 +103,54 @@ export default function TableOfContents() {
           toExpand.add(currentH2);
         }
         setExpanded(toExpand);
+        hasExtractedRef.current = true;
+        return true;
       }
+      return false;
     };
 
-    extract();
-    const t1 = setTimeout(extract, 500);
-    const t2 = setTimeout(extract, 1500);
+    // Try to extract immediately
+    const success = extract();
+    
+    // If not successful, set up MutationObserver to watch for DOM changes
+    if (!success) {
+      const article = document.querySelector("article");
+      if (article) {
+        observerRef.current = new MutationObserver(() => {
+          if (!hasExtractedRef.current) {
+            extract();
+          }
+        });
+        
+        observerRef.current.observe(article, {
+          childList: true,
+          subtree: true,
+        });
+      }
+      
+      // Fallback: try again after a short delay
+      const timeoutId = setTimeout(() => {
+        if (!hasExtractedRef.current) {
+          extract();
+        }
+      }, 100);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        if (observerRef.current) {
+          observerRef.current.disconnect();
+          observerRef.current = null;
+        }
+      };
+    }
+    
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
     };
-  }, [headings.length]);
+  }, [pathname]);
 
   // Scroll spy
   useEffect(() => {

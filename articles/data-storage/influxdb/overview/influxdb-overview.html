@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>InfluxDB 概述</title>
+</head>
+<body>
+    <h1>InfluxDB 概述</h1>
+    <p>InfluxDB 是目前最流行的时序数据库之一，由 InfluxData 公司开发。本文将介绍 InfluxDB 的基本概念、架构设计和核心特性。</p>
+
+    <h2>什么是时序数据</h2>
+    <p>时序数据（Time Series Data）是指按照时间顺序记录的数据点集合。每个数据点包含一个时间戳和一个或多个数值。典型的时序数据包括：</p>
+    <ul>
+        <li>服务器 CPU、内存、磁盘使用率</li>
+        <li>应用程序响应时间和错误率</li>
+        <li>传感器采集的温度、湿度、压力等</li>
+        <li>股票价格、交易量等金融数据</li>
+    </ul>
+
+    <h2>InfluxDB 版本演进</h2>
+    <h3>InfluxDB 1.x</h3>
+    <p>最初的版本，使用 InfluxQL 查询语言，采用 BoltDB 存储引擎。开源版本支持单节点部署，企业版支持集群。</p>
+
+    <h3>InfluxDB 2.x</h3>
+    <p>2019 年发布的重大版本更新，主要变化包括：</p>
+    <ul>
+        <li>引入全新的 Flux 查询语言</li>
+        <li>内置 Chronograf 风格的 UI 界面</li>
+        <li>统一的数据处理和告警功能</li>
+        <li>改进的存储引擎（基于 TSM）</li>
+    </ul>
+
+    <h3>InfluxDB 3.x (IOx)</h3>
+    <p>最新的架构重构版本，基于 Apache Arrow 和 Parquet 构建：</p>
+    <ul>
+        <li>使用 Apache Arrow 作为内存格式</li>
+        <li>使用 Parquet 作为持久化格式</li>
+        <li>支持 SQL 查询</li>
+        <li>无限基数（unlimited cardinality）</li>
+    </ul>
+
+    <h2>核心概念</h2>
+    <h3>Database（数据库）</h3>
+    <p>与传统数据库类似，用于逻辑隔离不同应用或项目的数据。</p>
+
+    <h3>Measurement（测量）</h3>
+    <p>相当于关系型数据库中的表，存储同一类时序数据。例如 "cpu_usage"、"temperature"。</p>
+
+    <h3>Tag（标签）</h3>
+    <p>用于存储元数据的键值对，会被索引以支持快速查询。例如 host=server01、region=us-west。</p>
+
+    <h3>Field（字段）</h3>
+    <p>存储实际的测量值，不会被索引。例如 value=0.64、temperature=23.5。</p>
+
+    <h3>Timestamp（时间戳）</h3>
+    <p>数据点的时间标识，默认使用纳秒精度。</p>
+
+    <h3>Series（序列）</h3>
+    <p>具有相同 measurement、tag set 和 field key 的数据点集合。</p>
+
+    <h2>数据模型示例</h2>
+    <pre><code>
+Measurement: cpu_usage
+Tags:        host=server01, region=us-west
+Fields:      usage_user=0.64, usage_system=0.12
+Timestamp:   2024-01-15T08:00:00Z
+    </code></pre>
+
+    <h2>存储引擎（TSM）</h2>
+    <p>InfluxDB 使用 Time-Structured Merge Tree（TSM）存储引擎：</p>
+    <ul>
+        <li><strong>WAL（Write-Ahead Log）</strong>：确保数据持久性</li>
+        <li><strong>Cache</strong>：内存中的热数据缓存</li>
+        <li><strong>TSM Files</strong>：压缩的只读数据文件</li>
+    </ul>
+
+    <h2>生态系统</h2>
+    <ul>
+        <li><strong>Telegraf</strong>：数据收集代理，支持 200+ 种输入插件</li>
+        <li><strong>Chronograf</strong>：可视化和仪表板工具（InfluxDB 2.x 已内置）</li>
+        <li><strong>Kapacitor</strong>：数据处理引擎，支持实时告警</li>
+        <li><strong>InfluxDB Client Libraries</strong>：支持 Go、Python、Java、JavaScript 等语言</li>
+    </ul>
+</body>
+</html>

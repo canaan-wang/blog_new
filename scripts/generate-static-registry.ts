@@ -57,19 +57,23 @@ function slugify(filename: string): string {
 }
 
 /**
- * 读取 HTML 文件
+ * 递归读取 HTML 文件
  */
-function readHtmlFiles(dirPath: string): { slug: string; content: string; filePath: string }[] {
+function readHtmlFiles(dirPath: string, group: string = "default"): { slug: string; content: string; filePath: string; group: string }[] {
   if (!fs.existsSync(dirPath)) return [];
-  const files: { slug: string; content: string; filePath: string }[] = [];
+  const files: { slug: string; content: string; filePath: string; group: string }[] = [];
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   
   for (const entry of entries) {
-    if (entry.isFile() && entry.name.endsWith(".html")) {
-      const filePath = path.join(dirPath, entry.name);
-      const content = fs.readFileSync(filePath, "utf-8");
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      // 递归读取子目录，目录名作为 group
+      const subFiles = readHtmlFiles(fullPath, entry.name);
+      files.push(...subFiles);
+    } else if (entry.isFile() && entry.name.endsWith(".html")) {
+      const content = fs.readFileSync(fullPath, "utf-8");
       const slug = slugify(entry.name);
-      files.push({ slug, content, filePath });
+      files.push({ slug, content, filePath: fullPath, group });
     }
   }
   
@@ -99,13 +103,31 @@ function inferGroup(category: string): string {
     "prompt-engineering": "提示工程",
     "ai-application": "AI 应用",
     "multimodal-ai": "多模态 AI",
-    // 前端领域 - 使用 group slug
+    // 前端领域
     "html": "overview",
     "css": "overview",
     "typescript": "overview",
     "vue": "overview",
+    // 数据存储
+    "redis": "overview",
+    "mysql": "overview",
+    "elasticsearch": "overview",
+    "influxdb": "overview",
+    // 分布式系统
+    "microservices": "overview",
+    "message-queue": "overview",
+    "distributed-theory": "overview",
+    "service-governance": "overview",
+    // 基础设施
+    "linux": "overview",
+    "container": "overview",
+    "network": "overview",
+    "monitoring": "overview",
+    // 后端语言
+    "golang": "overview",
+    "java": "overview",
   };
-  return groupMap[category] || "未分类";
+  return groupMap[category] || "overview";
 }
 
 /**
@@ -157,7 +179,7 @@ function main() {
           date,
           summary,
           tags: inferTags(cat.slug, title),
-          group: inferGroup(cat.slug),
+          group: file.group === "default" ? inferGroup(cat.slug) : file.group,
           draft: false,
           content: file.content,
         });

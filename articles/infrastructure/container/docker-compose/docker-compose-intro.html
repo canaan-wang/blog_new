@@ -1,0 +1,201 @@
+<h1>Docker Compose 入门指南</h1>
+
+<p>Docker Compose 是 Docker 官方提供的容器编排工具，通过声明式的 YAML 配置文件，让开发者能够使用单个命令定义和运行多容器应用。本文将介绍 Docker Compose 的核心概念、基本用法和实际应用场景。</p>
+
+<h2>一、什么是 Docker Compose</h2>
+
+<p>Docker Compose 解决了多容器应用管理的痛点。在微服务架构中，一个应用通常由多个服务组成（如 Web 服务、数据库、缓存等），手动管理这些容器的启动、停止和网络连接既繁琐又容易出错。</p>
+
+<p>Compose 通过 <code>docker-compose.yml</code> 文件描述整个应用栈，包括：</p>
+<ul>
+  <li>各个服务的容器配置</li>
+  <li>服务间的网络连接</li>
+  <li>数据卷的挂载</li>
+  <li>环境变量的设置</li>
+</ul>
+
+<h2>二、核心概念</h2>
+
+<h3>1. 服务（Service）</h3>
+<p>服务是 Compose 中的基本单元，对应一个容器实例。一个 Compose 项目可以包含多个服务，每个服务都有自己的镜像、端口、环境变量等配置。</p>
+
+<h3>2. 项目（Project）</h3>
+<p>项目是由一组关联服务组成的应用集合。默认情况下，项目名取自所在目录名，所有服务容器都会带有项目名称前缀。</p>
+
+<h3>3. 网络（Network）</h3>
+<p>Compose 自动为项目创建隔离的桥接网络，同一项目内的服务可以通过服务名互相访问，无需手动配置 IP 地址。</p>
+
+<h2>三、基础命令</h2>
+
+<pre><code class="language-bash"># 启动所有服务（后台运行）
+docker compose up -d
+
+# 停止并删除所有容器、网络
+docker compose down
+
+# 查看运行中的服务
+docker compose ps
+
+# 查看服务日志
+docker compose logs -f
+
+# 重启指定服务
+docker compose restart web
+
+# 构建或重建服务镜像
+docker compose build
+
+# 拉取服务依赖的镜像
+docker compose pull
+
+# 执行服务中的命令
+docker compose exec db mysql -u root -p</code></pre>
+
+<h2>四、配置文件详解</h2>
+
+<pre><code class="language-yaml">version: "3.8"
+
+services:
+  # Web 应用服务
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # 数据库服务
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: secret123
+      MYSQL_DATABASE: myapp
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存服务
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    command: redis-server --appendonly yes
+
+volumes:
+  db_data:
+  redis_data:
+
+networks:
+  backend:
+    driver: bridge</code></pre>
+
+<h2>五、常用配置选项</h2>
+
+<h3>镜像与构建</h3>
+<pre><code class="language-yaml">services:
+  app:
+    # 直接使用镜像
+    image: nginx:latest
+    
+    # 或从 Dockerfile 构建
+    build:
+      context: ./app          # 构建上下文路径
+      dockerfile: Dockerfile  # Dockerfile 文件名
+      args:                   # 构建参数
+        VERSION: 1.0.0</code></pre>
+
+<h3>端口映射</h3>
+<pre><code class="language-yaml">services:
+  web:
+    ports:
+      - "8080:80"           # 主机端口:容器端口
+      - "127.0.0.1:8081:80" # 仅绑定本地接口
+      - "8082-8085:80"      # 端口范围映射</code></pre>
+
+<h3>环境变量</h3>
+<pre><code class="language-yaml">services:
+  app:
+    environment:
+      - DB_HOST=localhost      # 直接设置
+      - DB_PORT=3306
+    env_file:
+      - .env                   # 从文件加载
+      - .env.local</code></pre>
+
+<h3>数据卷挂载</h3>
+<pre><code class="language-yaml">services:
+  app:
+    volumes:
+      - ./data:/app/data       # 绑定挂载（相对路径）
+      - /host/path:/container  # 绑定挂载（绝对路径）
+      - named_vol:/data        # 命名卷
+      - type: bind             # 长格式语法
+        source: ./config
+        target: /etc/config
+        read_only: true</code></pre>
+
+<h2>六、多环境配置</h2>
+
+<p>Compose 支持通过多个配置文件实现环境隔离：</p>
+
+<pre><code class="language-bash"># 基础配置 + 开发环境覆盖
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# 基础配置 + 生产环境覆盖
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d</code></pre>
+
+<p><code>docker-compose.override.yml</code> 会被自动加载，适合本地开发配置：</p>
+
+<pre><code class="language-yaml"># docker-compose.override.yml
+services:
+  web:
+    volumes:
+      - ./src:/app/src        # 开发时挂载源码
+    environment:
+      - DEBUG=true</code></pre>
+
+<h2>七、实际应用场景</h2>
+
+<h3>1. 本地开发环境</h3>
+<p>一键启动完整的开发环境，包括应用服务、数据库、消息队列、缓存等，新成员可以快速搭建开发环境。</p>
+
+<h3>2. 自动化测试</h3>
+<p>在 CI/CD 流水线中使用 Compose 启动测试依赖（数据库、Mock 服务），测试完成后自动清理。</p>
+
+<h3>3. 单机部署</h3>
+<p>对于中小型项目，可以直接在生产服务器使用 Compose 部署，配合 systemd 或 cron 实现服务管理。</p>
+
+<h2>八、最佳实践</h2>
+
+<ul>
+  <li><strong>版本锁定</strong>：明确指定镜像版本标签，避免使用 <code>latest</code></li>
+  <li><strong>健康检查</strong>：为关键服务配置健康检查，确保依赖就绪后才启动</li>
+  <li><strong>资源限制</strong>：使用 <code>deploy.resources</code> 限制 CPU 和内存使用</li>
+  <li><strong>日志管理</strong>：配置日志驱动和轮转策略，避免磁盘占满</li>
+  <li><strong>敏感信息</strong>：使用环境变量或 secrets 管理密码、密钥</li>
+  <li><strong>.dockerignore</strong>：构建时排除不必要的文件，减小镜像体积</li>
+</ul>
+
+<h2>九、与 Docker Swarm 的关系</h2>
+
+<p>Docker Compose 最初设计用于单机环境，而 Docker Swarm 是 Docker 的原生集群方案。Compose v3 格式的文件可以直接用于 <code>docker stack deploy</code> 部署到 Swarm 集群，实现从开发到生产的平滑过渡。</p>
+
+<p>对于更复杂的集群需求，可以考虑 Kubernetes，它提供了更强大的容器编排能力。</p>
